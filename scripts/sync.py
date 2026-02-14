@@ -37,32 +37,31 @@ from __future__ import annotations
 import json
 import re
 import sys
-import requests
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
-from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin
 
-try:
-    from bs4 import BeautifulSoup, Tag
-except ImportError:
-    print("❌ Error: BeautifulSoup4 is required. Install with: pip install beautifulsoup4")
-    sys.exit(1)
-
+import requests
+from bs4 import BeautifulSoup, Tag
 
 # =============================================================================
 # Configuration
 # =============================================================================
+
 
 @dataclass(frozen=True)
 class DocumentationURLs:
     """URLs for schema source documentation."""
 
     main: str = "https://documentation.ubuntu.com/snapcraft/stable/reference/project-file/snapcraft-yaml/"
-    plugins: str = "https://documentation.ubuntu.com/snapcraft/stable/reference/plugins/"
+    plugins: str = (
+        "https://documentation.ubuntu.com/snapcraft/stable/reference/plugins/"
+    )
     bases: str = "https://documentation.ubuntu.com/snapcraft/stable/reference/bases/"
-    extensions: str = "https://documentation.ubuntu.com/snapcraft/stable/reference/extensions/"
+    extensions: str = (
+        "https://documentation.ubuntu.com/snapcraft/stable/reference/extensions/"
+    )
     interfaces: str = "https://snapcraft.io/docs/supported-interfaces"
 
 
@@ -79,14 +78,15 @@ class ValidationThresholds:
 
 # Only truly static values that aren't documented in tables
 # Architecture names are platform/hardware constants
-VALID_ARCHITECTURES = frozenset([
-    "amd64", "i386", "armhf", "arm64", "ppc64el", "s390x", "riscv64"
-])
+VALID_ARCHITECTURES = frozenset(
+    ["amd64", "i386", "armhf", "arm64", "ppc64el", "s390x", "riscv64"]
+)
 
 
 # =============================================================================
 # Data Classes
 # =============================================================================
+
 
 @dataclass
 class PropertySchema:
@@ -153,6 +153,7 @@ class SchemaDefinition:
 # HTTP Utilities
 # =============================================================================
 
+
 class HTTPClient:
     """HTTP client with support for both HTTP and HTML meta-refresh redirects."""
 
@@ -186,50 +187,64 @@ class HTTPClient:
     def _fetch_with_meta_redirects(cls, url: str, redirect_count: int) -> str:
         """Fetch URL and follow meta-refresh redirects if present."""
         if redirect_count >= cls.MAX_META_REDIRECTS:
-            print(f"Error: Too many meta-refresh redirects ({redirect_count})")
-            sys.exit(1)
+            cls._handle_error(
+                f"Too many meta-refresh redirects ({redirect_count})", url
+            )
 
         try:
-            # Make request with redirects enabled (handles HTTP redirects)
-            response = requests.get(
-                url,
-                headers={"User-Agent": cls.USER_AGENT},
-                timeout=cls.TIMEOUT,
-                allow_redirects=True
-            )
-            response.raise_for_status()
-
-            # Show if we were redirected via HTTP
-            if response.history:
-                print(f"  -> HTTP redirect to: {response.url}")
-
+            response = cls._make_request(url)
             content = response.text
 
             # Check for meta-refresh redirect
             meta_redirect_url = cls._extract_meta_refresh(content, response.url)
             if meta_redirect_url:
                 print(f"  -> HTML meta-refresh to: {meta_redirect_url}")
-                return cls._fetch_with_meta_redirects(meta_redirect_url, redirect_count + 1)
+                return cls._fetch_with_meta_redirects(
+                    meta_redirect_url, redirect_count + 1
+                )
 
             return content
 
         except requests.exceptions.HTTPError as e:
-            print(f"Error: HTTP {e.response.status_code}: {e.response.reason}")
-            print(f"  URL: {url}")
-            print("  Documentation may have moved. Please update the URL.")
-            sys.exit(1)
+            cls._handle_http_error(e, url)
         except requests.exceptions.ConnectionError as e:
-            print(f"Error: Connection failed: {e}")
-            print(f"  URL: {url}")
-            sys.exit(1)
+            cls._handle_error(f"Connection failed: {e}", url)
         except requests.exceptions.Timeout:
-            print(f"Error: Timeout (request took longer than {cls.TIMEOUT}s)")
-            print(f"  URL: {url}")
-            sys.exit(1)
+            cls._handle_error(f"Timeout (request took longer than {cls.TIMEOUT}s)", url)
         except Exception as e:
-            print(f"Error: {e}")
-            print(f"  URL: {url}")
-            sys.exit(1)
+            cls._handle_error(str(e), url)
+
+    @classmethod
+    def _make_request(cls, url: str) -> requests.Response:
+        """Make HTTP request with redirect handling."""
+        response = requests.get(
+            url,
+            headers={"User-Agent": cls.USER_AGENT},
+            timeout=cls.TIMEOUT,
+            allow_redirects=True,
+        )
+        response.raise_for_status()
+
+        # Show if we were redirected via HTTP
+        if response.history:
+            print(f"  -> HTTP redirect to: {response.url}")
+
+        return response
+
+    @classmethod
+    def _handle_http_error(cls, error: requests.exceptions.HTTPError, url: str) -> None:
+        """Handle HTTP errors with detailed messaging."""
+        print(f"Error: HTTP {error.response.status_code}: {error.response.reason}")
+        print(f"  URL: {url}")
+        print("  Documentation may have moved. Please update the URL.")
+        sys.exit(1)
+
+    @classmethod
+    def _handle_error(cls, message: str, url: str) -> None:
+        """Handle general errors with consistent formatting."""
+        print(f"Error: {message}")
+        print(f"  URL: {url}")
+        sys.exit(1)
 
     @staticmethod
     def _extract_meta_refresh(html_content: str, base_url: str) -> str | None:
@@ -246,7 +261,9 @@ class HTTPClient:
             soup = BeautifulSoup(html_content, "html.parser")
 
             # Look for <meta http-equiv="refresh" content="0; url=...">
-            meta_tag = soup.find("meta", attrs={"http-equiv": lambda x: x and x.lower() == "refresh"})
+            meta_tag = soup.find(
+                "meta", attrs={"http-equiv": lambda x: x and x.lower() == "refresh"}
+            )
             if not meta_tag:
                 return None
 
@@ -271,6 +288,7 @@ class HTTPClient:
 # =============================================================================
 # Type Parsing
 # =============================================================================
+
 
 class TypeParser:
     """Parses type strings from documentation into JSON Schema types."""
@@ -329,7 +347,7 @@ class TypeParser:
 
         if len(any_of) == 1:
             return any_of[0]
-        elif len(any_of) > 1:
+        if len(any_of) > 1:
             return {"anyOf": any_of}
         return {}
 
@@ -343,7 +361,7 @@ class TypeParser:
             value_type = cls._parse_single(match.group(2).strip())
             return {
                 "type": "object",
-                "additionalProperties": value_type if value_type else True,
+                "additionalProperties": value_type or True,
             }
 
         # List type: list[ItemType]
@@ -371,16 +389,27 @@ class TypeParser:
 # HTML Parsers
 # =============================================================================
 
+
 class PropertyExtractor:
     """Extracts property definitions from documentation HTML."""
 
     # Section headers to skip
-    SKIP_HEADERS = frozenset({
-        "top-level keys", "platform keys", "architecture keys",
-        "app keys", "part keys", "socket keys", "hook keys",
-        "component keys", "content plug keys", "your tracker settings",
-        "additional links", "permissions keys"
-    })
+    SKIP_HEADERS = frozenset(
+        {
+            "top-level keys",
+            "platform keys",
+            "architecture keys",
+            "app keys",
+            "part keys",
+            "socket keys",
+            "hook keys",
+            "component keys",
+            "content plug keys",
+            "your tracker settings",
+            "additional links",
+            "permissions keys",
+        }
+    )
 
     # Keywords that indicate non-property headings
     SKIP_KEYWORDS = frozenset({"example", "see also", "note"})
@@ -388,9 +417,7 @@ class PropertyExtractor:
     def __init__(self, html_content: str):
         self.soup = BeautifulSoup(html_content, "html.parser")
         self.main_content = (
-            self.soup.find("main") or
-            self.soup.find("article") or
-            self.soup
+            self.soup.find("main") or self.soup.find("article") or self.soup
         )
 
     def extract_all(self) -> dict[str, PropertySchema]:
@@ -433,43 +460,16 @@ class PropertyExtractor:
                 break
 
             if current.name == "p":
-                # Check for labels first
-                strong = current.find("strong")
-                if strong:
-                    label = strong.get_text(strip=True).lower()
-                    if label == "type":
-                        expecting_type, expecting_desc = True, False
-                    elif label == "description":
-                        expecting_type, expecting_desc = False, True
-                        found_type = True  # Type section ended
-                    elif label == "values":
-                        expecting_type, expecting_desc = False, False
-                else:
-                    # Process content based on current state
-                    text = current.get_text(strip=True)
-
-                    if expecting_type and not found_type:
-                        # Extract type value
-                        if text.lower().startswith("one of:"):
-                            type_text = text
-                        else:
-                            codes = current.find_all("code")
-                            type_text = " ".join(
-                                c.get_text(strip=True) for c in codes if c.get_text(strip=True)
-                            ) if codes else text
-
-                        if type_text:
-                            prop.type_schema = TypeParser.parse(type_text)
-                            found_type = True
-                            expecting_type = False
-
-                    elif expecting_desc and not found_desc:
-                        # Extract description value
-                        desc = text[:497] + "..." if len(text) > 500 else text
-                        if desc:
-                            prop.description = desc
-                            found_desc = True
-                            expecting_desc = False
+                expecting_type, expecting_desc, found_type, found_desc = (
+                    self._process_paragraph_content(
+                        current,
+                        prop,
+                        expecting_type,
+                        expecting_desc,
+                        found_type,
+                        found_desc,
+                    )
+                )
 
             elif current.name == "table":
                 # Parse Values table for enum values
@@ -483,7 +483,9 @@ class PropertyExtractor:
                 if table:
                     enum_values = self._extract_table_values(table)
                     if enum_values:
-                        prop.enum_values = sorted(set(prop.enum_values).union(enum_values))
+                        prop.enum_values = sorted(
+                            set(prop.enum_values).union(enum_values)
+                        )
 
             elif current.name == "dl":
                 # Fallback for definition list format
@@ -491,7 +493,79 @@ class PropertyExtractor:
 
             current = current.find_next_sibling()
 
-        # Ensure type is set
+        self._finalize_property_parsing(prop)
+
+    def _process_paragraph_content(
+        self,
+        paragraph: Tag,
+        prop: PropertySchema,
+        expecting_type: bool,
+        expecting_desc: bool,
+        found_type: bool,
+        found_desc: bool,
+    ) -> tuple[bool, bool, bool, bool]:
+        """Process paragraph content for type and description extraction.
+
+        Returns: (expecting_type, expecting_desc, found_type, found_desc)
+        """
+        # Check for labels first
+        strong = paragraph.find("strong")
+        if strong:
+            label = strong.get_text(strip=True).lower()
+            if label == "type":
+                return True, False, found_type, found_desc  # Start expecting type
+            if label == "description":
+                return (
+                    False,
+                    True,
+                    True,
+                    found_desc,
+                )  # Type section ended, start expecting desc
+            if label == "values":
+                return False, False, found_type, found_desc  # Stop expecting anything
+        else:
+            # Process content based on current state
+            text = paragraph.get_text(strip=True)
+
+            if expecting_type and not found_type:
+                self._extract_type_from_paragraph(paragraph, text, prop)
+                return False, False, True, found_desc  # Found type
+
+            if expecting_desc and not found_desc:
+                self._extract_description_from_paragraph(text, prop)
+                return False, False, found_type, True  # Found desc
+
+        return expecting_type, expecting_desc, found_type, found_desc
+
+    def _extract_type_from_paragraph(
+        self, paragraph: Tag, text: str, prop: PropertySchema
+    ) -> None:
+        """Extract type information from a paragraph."""
+        if text.lower().startswith("one of:"):
+            type_text = text
+        else:
+            codes = paragraph.find_all("code")
+            type_text = (
+                " ".join(
+                    c.get_text(strip=True) for c in codes if c.get_text(strip=True)
+                )
+                if codes
+                else text
+            )
+
+        if type_text:
+            prop.type_schema = TypeParser.parse(type_text)
+
+    def _extract_description_from_paragraph(
+        self, text: str, prop: PropertySchema
+    ) -> None:
+        """Extract description from paragraph text."""
+        desc = text[:497] + "..." if len(text) > 500 else text
+        if desc:
+            prop.description = desc
+
+    def _finalize_property_parsing(self, prop: PropertySchema) -> None:
+        """Finalize property parsing with default values if needed."""
         if not prop.type_schema and not prop.enum_values:
             prop.type_schema = {"type": "string"}
 
@@ -524,8 +598,11 @@ class PropertyExtractor:
             if label == "type" and not prop.type_schema:
                 codes = dd.find_all("code")
                 type_text = (
-                    " ".join(c.get_text(strip=True) for c in codes if c.get_text(strip=True))
-                    if codes else dd.get_text(strip=True)
+                    " ".join(
+                        c.get_text(strip=True) for c in codes if c.get_text(strip=True)
+                    )
+                    if codes
+                    else dd.get_text(strip=True)
                 )
                 if type_text:
                     prop.type_schema = TypeParser.parse(type_text)
@@ -607,7 +684,7 @@ class ExtensionParser:
     LEGACY_SCHEMA_URL = "https://raw.githubusercontent.com/canonical/snapcraft/main/schema/snapcraft-legacy.json"
 
     @classmethod
-    def parse(cls, html_content: str, min_expected: int) -> list[str]:
+    def parse(cls, min_expected: int) -> list[str]:
         """Fetch extension names from canonical/snapcraft registry files.
 
         Fetches from two sources:
@@ -615,7 +692,6 @@ class ExtensionParser:
         2. Legacy extensions (core18/core20): snapcraft-legacy.json
 
         Args:
-            html_content: Unused (kept for API compatibility)
             min_expected: Minimum number of extensions expected
 
         Returns:
@@ -654,7 +730,11 @@ class ExtensionParser:
                 print(f"  Found {legacy_count} legacy extensions")
             else:
                 print("  Warning: No extensions found in legacy schema")
-        except (requests.exceptions.RequestException, OSError, json.JSONDecodeError) as e:
+        except (
+            requests.exceptions.RequestException,
+            OSError,
+            json.JSONDecodeError,
+        ) as e:
             print(f"  Warning: Failed to fetch legacy extensions: {e}")
 
         result = sorted(extensions)
@@ -664,11 +744,15 @@ class ExtensionParser:
                 f"expected at least {min_expected}. Repository structure may have changed."
             )
 
-        print(f"  Total: {len(result)} extensions (modern: {modern_count}, legacy: {legacy_count})")
+        print(
+            f"  Total: {len(result)} extensions (modern: {modern_count}, legacy: {legacy_count})"
+        )
         return result
 
     @classmethod
-    def _extract_legacy_extensions(cls, schema: dict | list, path: str = '') -> set[str]:
+    def _extract_legacy_extensions(
+        cls, schema: dict | list, path: str = ""
+    ) -> set[str]:
         """Recursively extract extension names from legacy schema's enum values.
 
         Args:
@@ -682,11 +766,13 @@ class ExtensionParser:
 
         if isinstance(schema, dict):
             # Check if this is an extensions enum
-            if 'enum' in schema and 'extension' in path.lower():
-                extensions.update(schema['enum'])
+            if "enum" in schema and "extension" in path.lower():
+                extensions.update(schema["enum"])
             # Recursively search through the schema
             for key, value in schema.items():
-                extensions.update(cls._extract_legacy_extensions(value, f'{path}.{key}'))
+                extensions.update(
+                    cls._extract_legacy_extensions(value, f"{path}.{key}")
+                )
         elif isinstance(schema, list):
             for item in schema:
                 extensions.update(cls._extract_legacy_extensions(item, path))
@@ -726,6 +812,7 @@ class InterfaceParser:
 # =============================================================================
 # Schema Builder
 # =============================================================================
+
 
 class SchemaBuilder:
     """Builds JSON Schema from extracted properties."""
@@ -812,7 +899,7 @@ class SchemaBuilder:
         """Remove the prefix from a property path."""
         for prefix, _ in self.PREFIX_MAPPINGS:
             if path.startswith(prefix):
-                return path[len(prefix):]
+                return path[len(prefix) :]
         return path
 
     def _build_definitions(self) -> dict[str, dict[str, Any]]:
@@ -888,7 +975,9 @@ class SchemaBuilder:
 
         return defs
 
-    def _build_top_level(self, defs: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    def _build_top_level(
+        self, defs: dict[str, dict[str, Any]]
+    ) -> dict[str, dict[str, Any]]:
         """Build top-level properties with references to definitions."""
         top_level = self.categorized["top_level"].copy()
 
@@ -906,7 +995,8 @@ class SchemaBuilder:
                     "type": "object",
                     "description": description,
                     "additionalProperties": (
-                        {"$ref": f"#/$defs/{def_name}"} if def_name in defs
+                        {"$ref": f"#/$defs/{def_name}"}
+                        if def_name in defs
                         else {"type": "object", "additionalProperties": True}
                     ),
                 }
@@ -918,7 +1008,9 @@ class SchemaBuilder:
                 "description": "Platform/architecture configurations",
                 "additionalProperties": {
                     "anyOf": [
-                        {"$ref": "#/$defs/Platform"} if "Platform" in defs else {"type": "object"},
+                        {"$ref": "#/$defs/Platform"}
+                        if "Platform" in defs
+                        else {"type": "object"},
                         {"type": "null"},  # Allow shorthand like "amd64:"
                     ]
                 },
@@ -932,7 +1024,9 @@ class SchemaBuilder:
                 "items": {
                     "anyOf": [
                         {"type": "string"},
-                        {"$ref": "#/$defs/Architecture"} if "Architecture" in defs else {"type": "object"},
+                        {"$ref": "#/$defs/Architecture"}
+                        if "Architecture" in defs
+                        else {"type": "object"},
                     ]
                 },
             }
@@ -958,6 +1052,7 @@ class SchemaBuilder:
 # =============================================================================
 # Schema Enhancer
 # =============================================================================
+
 
 class SchemaEnhancer:
     """Enhances schema with dynamically parsed enum values."""
@@ -1055,32 +1150,32 @@ class SchemaEnhancer:
                         "interface": {
                             "type": "string",
                             "enum": self.interfaces,
-                            "description": "The interface type for this plug/slot."
+                            "description": "The interface type for this plug/slot.",
                         },
                         "bus": {
                             "type": "string",
                             "enum": ["session", "system"],
-                            "description": "D-Bus bus type (for dbus interface)."
+                            "description": "D-Bus bus type (for dbus interface).",
                         },
                         "name": {
                             "type": "string",
-                            "description": "Well-known D-Bus name or content tag."
+                            "description": "Well-known D-Bus name or content tag.",
                         },
                         "target": {
                             "type": "string",
-                            "description": "Target path (for content interface)."
+                            "description": "Target path (for content interface).",
                         },
                         "default-provider": {
                             "type": "string",
-                            "description": "Default content provider snap."
+                            "description": "Default content provider snap.",
                         },
                         "content": {
                             "type": "string",
-                            "description": "Content tag identifier."
-                        }
+                            "description": "Content tag identifier.",
+                        },
                     },
-                    "additionalProperties": True
-                }
+                    "additionalProperties": True,
+                },
             ]
         }
 
@@ -1090,7 +1185,7 @@ class SchemaEnhancer:
                 props[key] = {
                     "type": "object",
                     "description": f"Declares the snap's {key}. Property names are custom identifiers.\n\nAvailable interfaces: {', '.join(self.interfaces[:25])}...",
-                    "additionalProperties": plug_slot_value_schema
+                    "additionalProperties": plug_slot_value_schema,
                 }
 
         # App-level plugs/slots are arrays of interface names (strings)
@@ -1125,6 +1220,7 @@ class SchemaEnhancer:
 # Main Entry Point
 # =============================================================================
 
+
 def main() -> int:
     """
     If this script fails, it means the documentation structure has changed.
@@ -1143,17 +1239,8 @@ def main() -> int:
     project_root = script_dir.parent
     schema_output = project_root / "schemas" / "snapcraft.json"
 
-    # Fetch and parse main documentation
-    html_content = HTTPClient.fetch(urls.main)
-    print(f"Fetched {len(html_content)} bytes of HTML\n")
-
-    extractor = PropertyExtractor(html_content)
-    properties = extractor.extract_all()
-    print(f"Extracted {len(properties)} property definitions\n")
-
-    if len(properties) < thresholds.properties:
-        print(f"Error: Only extracted {len(properties)} properties, expected at least {thresholds.properties}")
-        sys.exit(1)
+    # Fetch main documentation and extract properties
+    properties = fetch_main_documentation(urls.main, thresholds)
 
     # Build initial schema
     builder = SchemaBuilder(properties, urls.main)
@@ -1161,9 +1248,50 @@ def main() -> int:
 
     prop_count = len(schema.get("properties", {}))
     defs_count = len(schema.get("$defs", {}))
-    print(f"Generated schema: {prop_count} top-level properties, {defs_count} definitions\n")
+    print(
+        f"Generated schema: {prop_count} top-level properties, {defs_count} definitions\n"
+    )
 
     # Fetch dynamic enum values
+    plugins, bases, extensions, interfaces = fetch_dynamic_enums(urls, thresholds)
+
+    # Enhance schema with dynamic values
+    enhancer = SchemaEnhancer(schema, plugins, bases, extensions, interfaces)
+    schema = enhancer.enhance()
+
+    # Write schema file
+    write_schema_file(schema, schema_output)
+
+    # Print summary
+    print_summary(schema, plugins, bases, extensions, interfaces)
+
+    return 0
+
+
+def fetch_main_documentation(
+    url: str, thresholds: ValidationThresholds
+) -> dict[str, PropertySchema]:
+    """Fetch main documentation and extract property definitions."""
+    html_content = HTTPClient.fetch(url)
+    print(f"Fetched {len(html_content)} bytes of HTML\n")
+
+    extractor = PropertyExtractor(html_content)
+    properties = extractor.extract_all()
+    print(f"Extracted {len(properties)} property definitions\n")
+
+    if len(properties) < thresholds.properties:
+        print(
+            f"Error: Only extracted {len(properties)} properties, expected at least {thresholds.properties}"
+        )
+        sys.exit(1)
+
+    return properties
+
+
+def fetch_dynamic_enums(
+    urls: DocumentationURLs, thresholds: ValidationThresholds
+) -> tuple[list[str], list[str], list[str], list[str]]:
+    """Fetch all dynamic enum values from documentation."""
     print("=" * 60)
     print("Fetching dynamic enum values from documentation...")
     print("=" * 60 + "\n")
@@ -1174,32 +1302,42 @@ def main() -> int:
     bases_html = HTTPClient.fetch(urls.bases)
     bases = BaseParser.parse(bases_html, thresholds.bases)
 
-    extensions_html = HTTPClient.fetch(urls.extensions)
-    extensions = ExtensionParser.parse(extensions_html, thresholds.extensions)
+    extensions = ExtensionParser.parse(thresholds.extensions)
 
     interfaces_html = HTTPClient.fetch(urls.interfaces)
     interfaces = InterfaceParser.parse(interfaces_html, thresholds.interfaces)
 
-    # Enhance schema with dynamic values
-    enhancer = SchemaEnhancer(schema, plugins, bases, extensions, interfaces)
-    schema = enhancer.enhance()
+    return plugins, bases, extensions, interfaces
 
-    # Write schema
+
+def write_schema_file(schema: dict[str, Any], output_path: Path) -> None:
+    """Write the schema to the output file."""
     new_content = json.dumps(schema, indent=2, ensure_ascii=False) + "\n"
 
-    if schema_output.exists():
-        current_content = schema_output.read_text(encoding="utf-8")
+    if output_path.exists():
+        current_content = output_path.read_text(encoding="utf-8")
         if current_content == new_content:
             print("Schema is already up to date. No changes needed.")
-            return 0
+            return
         print("Schema has changed. Updating...")
 
-    print(f"Writing schema to {schema_output}")
-    schema_output.parent.mkdir(parents=True, exist_ok=True)
-    schema_output.write_text(new_content, encoding="utf-8", newline="\n")
+    print(f"Writing schema to {output_path}")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(new_content, encoding="utf-8", newline="\n")
     print("Schema updated successfully!")
 
-    # Summary
+
+def print_summary(
+    schema: dict[str, Any],
+    plugins: list[str],
+    bases: list[str],
+    extensions: list[str],
+    interfaces: list[str],
+) -> None:
+    """Print a summary of the generated schema."""
+    prop_count = len(schema.get("properties", {}))
+    defs_count = len(schema.get("$defs", {}))
+
     print("\nSchema Summary:")
     print(f"Top-level properties: {prop_count}")
     print(f"Definitions ($defs): {defs_count}")
@@ -1208,12 +1346,11 @@ def main() -> int:
         f"extensions({len(extensions)}), interfaces({len(interfaces)})"
     )
 
-    if properties := schema.get("properties"):
-        sample = list(properties.keys())[:10]
+    if schema_props := schema.get("properties"):
+        sample = list(schema_props.keys())[:10]
         print(f"Sample properties: {', '.join(sample)}")
-    if defs := schema.get("$defs"):
-        print(f"Definitions: {', '.join(defs.keys())}")
-    return 0
+    if schema_defs := schema.get("$defs"):
+        print(f"Definitions: {', '.join(schema_defs.keys())}")
 
 
 if __name__ == "__main__":
