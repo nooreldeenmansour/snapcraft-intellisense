@@ -104,18 +104,9 @@ export function activate(context: vscode.ExtensionContext) {
   );
   context.subscriptions.push(hoverProvider);
 
-  // Register code actions for quick fixes
-  const codeActionProvider = vscode.languages.registerCodeActionsProvider(
-    { language: 'yaml', pattern: '**/snapcraft.{yml,yaml}' },
-    new SnapcraftCodeActionProvider(),
-    { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] }
-  );
-  context.subscriptions.push(codeActionProvider);
-
   // Register commands
   context.subscriptions.push(
-    vscode.commands.registerCommand('snapcraft.showDocumentation', () => showDocumentation()),
-    vscode.commands.registerCommand('snapcraft.openDocs', (key: string) => openDocs(key))
+    vscode.commands.registerCommand('snapcraft.showDocumentation', () => showDocumentation())
   );
 
   // Show welcome message on first activation
@@ -131,10 +122,6 @@ export function activate(context: vscode.ExtensionContext) {
     });
     context.globalState.update('snapcraft.hasShownWelcome', true);
   }
-}
-
-export function deactivate() {
-  // Cleanup if needed
 }
 
 /**
@@ -192,7 +179,7 @@ class SnapcraftHoverProvider implements vscode.HoverProvider {
         return new vscode.Hover(content, wordRange);
       }
 
-      // Interface documentation (loaded from schema) - THE KILLER FEATURE
+      // Interface documentation (loaded from schema)
       if (schemaInterfaces && schemaInterfaces.has(word)) {
         const context = this.getInterfaceContext(document, position);
         if (context.isInPlugsOrSlots) {
@@ -237,21 +224,6 @@ class SnapcraftHoverProvider implements vscode.HoverProvider {
   }
 }
 
-/**
- * Code action provider for quick fixes.
- */
-class SnapcraftCodeActionProvider implements vscode.CodeActionProvider {
-  provideCodeActions(
-    _document: vscode.TextDocument,
-    _range: vscode.Range,
-    _context: vscode.CodeActionContext,
-    _token: vscode.CancellationToken
-  ): vscode.CodeAction[] {
-    // No custom code actions needed - schema validation handles everything
-    return [];
-  }
-}
-
 async function showDocumentation(): Promise<void> {
   const choice = await vscode.window.showQuickPick([
     { label: 'Snapcraft YAML Reference', url: DOCS_REFERENCE },
@@ -270,9 +242,4 @@ async function showDocumentation(): Promise<void> {
   if (choice) {
     vscode.env.openExternal(vscode.Uri.parse(choice.url));
   }
-}
-
-function openDocs(key: string): void {
-  const url = getPropertyDocUrl(key);
-  vscode.env.openExternal(vscode.Uri.parse(url));
 }
