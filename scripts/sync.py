@@ -2,6 +2,7 @@
 # /// script
 # dependencies = [
 #   "beautifulsoup4==4.12.3",
+#   "requests==2.32.3",
 # ]
 # ///
 """
@@ -14,6 +15,11 @@ This script:
 4. Generates a complete JSON Schema with properly nested properties
 5. Updates the local schema file
 
+Redirect Handling:
+- Uses requests library for robust HTTP redirect handling (301, 302, etc.)
+- Automatically follows HTML meta-refresh redirects (e.g., <meta http-equiv="refresh">)
+- This makes the script resilient to documentation URL changes
+
 The Sphinx HTML structure is predictable:
 - h3 headings contain property names (e.g., "name", "apps.<app-name>.command")
 - Type/Description pairs follow headings
@@ -23,10 +29,7 @@ The Sphinx HTML structure is predictable:
 
 Dependencies (inline - run with `uv run`):
     beautifulsoup4==4.12.3
-
-IMPORTANT: This script has NO fallback values. If parsing fails, it will exit
-with an error. This is intentional - if documentation changes, we need to update
-the parser, not silently use stale data.
+    requests==2.32.3
 """
 
 from __future__ import annotations
@@ -34,11 +37,12 @@ from __future__ import annotations
 import json
 import re
 import sys
+import requests
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.parse import urljoin
 
 try:
     from bs4 import BeautifulSoup, Tag
@@ -135,15 +139,20 @@ class SchemaDefinition:
 # =============================================================================
 
 class HTTPClient:
-    """Simple HTTP client for fetching documentation pages."""
+    """HTTP client with support for both HTTP and HTML meta-refresh redirects."""
 
     USER_AGENT = "Mozilla/5.0 (compatible; SnapcraftSchemaSync/2.0)"
     TIMEOUT = 30
+    MAX_META_REDIRECTS = 3
 
     @classmethod
     def fetch(cls, url: str) -> str:
         """
-        Fetch HTML content from URL with redirect handling.
+        Fetch HTML content from URL with comprehensive redirect handling.
+
+        Handles:
+        - HTTP redirects (301, 302, etc.) - automatically via requests
+        - HTML meta-refresh redirects - manually parsed
 
         Args:
             url: The URL to fetch
@@ -154,41 +163,94 @@ class HTTPClient:
         Raises:
             SystemExit: If fetch fails
         """
-        print(f"📥 Fetching: {url}")
+        print(f"Fetching: {url}")
+        content = cls._fetch_with_meta_redirects(url, redirect_count=0)
+        return content
+
+    @classmethod
+    def _fetch_with_meta_redirects(cls, url: str, redirect_count: int) -> str:
+        """Fetch URL and follow meta-refresh redirects if present."""
+        if redirect_count >= cls.MAX_META_REDIRECTS:
+            print(f"Error: Too many meta-refresh redirects ({redirect_count})")
+            sys.exit(1)
+
         try:
-            opener = build_opener(HTTPRedirectHandler)
-            request = Request(url, headers={"User-Agent": cls.USER_AGENT})
+            # Make request with redirects enabled (handles HTTP redirects)
+            response = requests.get(
+                url,
+                headers={"User-Agent": cls.USER_AGENT},
+                timeout=cls.TIMEOUT,
+                allow_redirects=True
+            )
+            response.raise_for_status()
 
-            with opener.open(request, timeout=cls.TIMEOUT) as response:
-                final_url = response.geturl()
-                if final_url != url:
-                    print(f"   ↪ Redirected to: {final_url}")
-                return response.read().decode("utf-8")
+            # Show if we were redirected via HTTP
+            if response.history:
+                print(f"  -> HTTP redirect to: {response.url}")
 
-        except HTTPError as e:
-            cls._handle_http_error(url, e)
-            raise SystemExit(1) from e
-        except URLError as e:
-            print(f"❌ Network Error: {e.reason}\n   URL: {url}")
-            raise SystemExit(1) from e
+            content = response.text
+
+            # Check for meta-refresh redirect
+            meta_redirect_url = cls._extract_meta_refresh(content, response.url)
+            if meta_redirect_url:
+                print(f"  -> HTML meta-refresh to: {meta_redirect_url}")
+                return cls._fetch_with_meta_redirects(meta_redirect_url, redirect_count + 1)
+
+            return content
+
+        except requests.exceptions.HTTPError as e:
+            print(f"Error: HTTP {e.response.status_code}: {e.response.reason}")
+            print(f"  URL: {url}")
+            print("  Documentation may have moved. Please update the URL.")
+            sys.exit(1)
+        except requests.exceptions.ConnectionError as e:
+            print(f"Error: Connection failed: {e}")
+            print(f"  URL: {url}")
+            sys.exit(1)
+        except requests.exceptions.Timeout:
+            print(f"Error: Timeout (request took longer than {cls.TIMEOUT}s)")
+            print(f"  URL: {url}")
+            sys.exit(1)
         except Exception as e:
-            print(f"❌ Unexpected error: {e}\n   URL: {url}")
-            raise SystemExit(1) from e
+            print(f"Error: {e}")
+            print(f"  URL: {url}")
+            sys.exit(1)
 
     @staticmethod
-    def _handle_http_error(url: str, error: HTTPError) -> None:
-        """Handle HTTP errors with helpful messages.
+    def _extract_meta_refresh(html_content: str, base_url: str) -> str | None:
+        """Extract redirect URL from HTML meta-refresh tag.
 
         Args:
-            url: The URL that failed
-            error: The HTTP error that occurred
+            html_content: The HTML content to parse
+            base_url: The base URL for resolving relative URLs
 
-        Raises:
-            SystemExit: Always exits with code 1
+        Returns:
+            The absolute redirect URL, or None if no meta-refresh found
         """
-        print(f"❌ HTTP Error {error.code}: {error.reason}")
-        print(f"   URL: {url}")
-        print("   Documentation may have moved. Please update the URL.")
+        try:
+            soup = BeautifulSoup(html_content, "html.parser")
+
+            # Look for <meta http-equiv="refresh" content="0; url=...">
+            meta_tag = soup.find("meta", attrs={"http-equiv": lambda x: x and x.lower() == "refresh"})
+            if not meta_tag:
+                return None
+
+            content = meta_tag.get("content", "")
+            if not content:
+                return None
+
+            # Parse the content attribute: "0; url=https://example.com"
+            match = re.search(r"url=(.+)", content, re.IGNORECASE)
+            if match:
+                redirect_url = match.group(1).strip().strip("'\"")
+                # Convert relative URL to absolute
+                return urljoin(base_url, redirect_url)
+
+        except Exception:
+            # If parsing fails, just return None (no redirect)
+            pass
+
+        return None
 
 
 # =============================================================================
@@ -489,6 +551,7 @@ class PluginParser:
                 f"Parsed {len(result)} plugins, expected at least {min_expected}. "
                 "Documentation structure may have changed."
             )
+        print(f"Parsed {len(result)} plugins")
         return result
 
 
@@ -517,6 +580,7 @@ class BaseParser:
                 f"Parsed {len(result)} bases, expected at least {min_expected}. "
                 "Documentation structure may have changed."
             )
+        print(f"Parsed {len(result)} bases")
         return result
 
 
@@ -558,8 +622,8 @@ class ExtensionParser:
             extensions.update(modern_extensions)
             modern_count = len(modern_extensions)
             print(f"  Found {modern_count} modern extensions")
-        except (HTTPError, URLError, OSError) as e:
-            print(f"  ⚠️  Failed to fetch modern extensions: {e}")
+        except (requests.exceptions.RequestException, OSError) as e:
+            print(f"  Warning: Failed to fetch modern extensions: {e}")
 
         # Fetch legacy extensions from snapcraft-legacy.json
         try:
@@ -574,9 +638,9 @@ class ExtensionParser:
                 legacy_count = len(legacy_extensions)
                 print(f"  Found {legacy_count} legacy extensions")
             else:
-                print("  ⚠️  No extensions found in legacy schema")
-        except (HTTPError, URLError, OSError, json.JSONDecodeError) as e:
-            print(f"  ⚠️  Failed to fetch legacy extensions: {e}")
+                print("  Warning: No extensions found in legacy schema")
+        except (requests.exceptions.RequestException, OSError, json.JSONDecodeError) as e:
+            print(f"  Warning: Failed to fetch legacy extensions: {e}")
 
         result = sorted(extensions)
         if len(result) < min_expected:
@@ -585,7 +649,7 @@ class ExtensionParser:
                 f"expected at least {min_expected}. Repository structure may have changed."
             )
 
-        print(f"  ✅ Total: {len(result)} extensions (modern: {modern_count}, legacy: {legacy_count})")
+        print(f"  Total: {len(result)} extensions (modern: {modern_count}, legacy: {legacy_count})")
         return result
 
     @classmethod
@@ -640,6 +704,7 @@ class InterfaceParser:
                 f"Parsed {len(result)} interfaces, expected at least {min_expected}. "
                 "Documentation structure may have changed."
             )
+        print(f"Parsed {len(result)} interfaces")
         return result
 
 
@@ -898,7 +963,7 @@ class SchemaEnhancer:
 
     def enhance(self) -> dict[str, Any]:
         """Apply all enhancements to the schema."""
-        print("\n🎨 Enhancing schema with parsed enum values...")
+        print("\nEnhancing schema with parsed enum values...")
 
         self._enhance_plugins()
         self._enhance_bases()
@@ -906,7 +971,7 @@ class SchemaEnhancer:
         self._enhance_interfaces()
         self._enhance_architectures()
 
-        print("✅ Schema enhancement complete!\n")
+        print("Schema enhancement complete!\n")
         return self.schema
 
     def _enhance_plugins(self) -> None:
@@ -917,7 +982,7 @@ class SchemaEnhancer:
         part_def = self.schema.get("$defs", {}).get("Part", {})
         if "plugin" in part_def.get("properties", {}):
             part_def["properties"]["plugin"]["enum"] = self.plugins
-            print(f"  ✓ Added {len(self.plugins)} plugin names")
+            print(f"  Added {len(self.plugins)} plugin names")
 
     def _enhance_bases(self) -> None:
         """Add base enums to base and build-base properties."""
@@ -928,7 +993,7 @@ class SchemaEnhancer:
 
         if "base" in props:
             props["base"]["enum"] = self.bases
-            print(f"  ✓ Added {len(self.bases)} base snap names")
+            print(f"  Added {len(self.bases)} base snap names")
 
         if "build-base" in props:
             build_bases = self.bases + (["devel"] if "devel" not in self.bases else [])
@@ -948,7 +1013,7 @@ class SchemaEnhancer:
                 ext_schema["items"] = {"type": "string", "enum": self.extensions}
             else:
                 ext_schema["enum"] = self.extensions
-            print(f"  ✓ Added {len(self.extensions)} extension names")
+            print(f"  Added {len(self.extensions)} extension names")
 
     def _enhance_interfaces(self) -> None:
         """Add interface definitions to plugs and slots.
@@ -959,7 +1024,7 @@ class SchemaEnhancer:
         if not self.interfaces:
             return
 
-        print(f"  ✓ Added {len(self.interfaces)} interface names")
+        print(f"  Added {len(self.interfaces)} interface names")
 
         props = self.schema.get("properties", {})
 
@@ -1033,7 +1098,7 @@ class SchemaEnhancer:
                 for item in arch_def["items"]["anyOf"]:
                     if item.get("type") == "string":
                         item["enum"] = archs
-                        print(f"  ✓ Added {len(archs)} architecture names")
+                        print(f"  Added {len(archs)} architecture names")
                         break
 
         # Platform property names
@@ -1047,14 +1112,12 @@ class SchemaEnhancer:
 
 def main() -> int:
     """
-    Main entry point - NO FALLBACKS, FAIL FAST!
-
     If this script fails, it means the documentation structure has changed.
     Update the parsing logic to match the new structure.
     """
     print("=" * 60)
     print("Snapcraft Schema Sync Tool v2.0")
-    print("Parsing from official documentation - NO FALLBACKS")
+    print("Parsing from official documentation")
     print("=" * 60)
 
     urls = DocumentationURLs()
@@ -1067,14 +1130,14 @@ def main() -> int:
 
     # Fetch and parse main documentation
     html_content = HTTPClient.fetch(urls.main)
-    print(f"✓ Fetched {len(html_content)} bytes of HTML\n")
+    print(f"Fetched {len(html_content)} bytes of HTML\n")
 
     extractor = PropertyExtractor(html_content)
     properties = extractor.extract_all()
-    print(f"✓ Extracted {len(properties)} property definitions\n")
+    print(f"Extracted {len(properties)} property definitions\n")
 
     if len(properties) < thresholds.properties:
-        print(f"❌ Only extracted {len(properties)} properties, expected at least {thresholds.properties}")
+        print(f"Error: Only extracted {len(properties)} properties, expected at least {thresholds.properties}")
         sys.exit(1)
 
     # Build initial schema
@@ -1083,7 +1146,7 @@ def main() -> int:
 
     prop_count = len(schema.get("properties", {}))
     defs_count = len(schema.get("$defs", {}))
-    print(f"✓ Generated schema: {prop_count} top-level properties, {defs_count} definitions\n")
+    print(f"Generated schema: {prop_count} top-level properties, {defs_count} definitions\n")
 
     # Fetch dynamic enum values
     print("=" * 60)
@@ -1092,19 +1155,15 @@ def main() -> int:
 
     plugins_html = HTTPClient.fetch(urls.plugins)
     plugins = PluginParser.parse(plugins_html, thresholds.plugins)
-    print(f"✅ Parsed {len(plugins)} plugins\n")
 
     bases_html = HTTPClient.fetch(urls.bases)
     bases = BaseParser.parse(bases_html, thresholds.bases)
-    print(f"✅ Parsed {len(bases)} bases\n")
 
     extensions_html = HTTPClient.fetch(urls.extensions)
     extensions = ExtensionParser.parse(extensions_html, thresholds.extensions)
-    print(f"✅ Parsed {len(extensions)} extensions\n")
 
     interfaces_html = HTTPClient.fetch(urls.interfaces)
     interfaces = InterfaceParser.parse(interfaces_html, thresholds.interfaces)
-    print(f"✅ Parsed {len(interfaces)} interfaces\n")
 
     # Enhance schema with dynamic values
     enhancer = SchemaEnhancer(schema, plugins, bases, extensions, interfaces)
@@ -1116,14 +1175,14 @@ def main() -> int:
     if schema_output.exists():
         current_content = schema_output.read_text(encoding="utf-8")
         if current_content == new_content:
-            print("💚 Schema is already up to date. No changes needed.")
+            print("Schema is already up to date. No changes needed.")
             return 0
-        print("🔄 Schema has changed. Updating...")
+        print("Schema has changed. Updating...")
 
     print(f"Writing schema to {schema_output}")
     schema_output.parent.mkdir(parents=True, exist_ok=True)
     schema_output.write_text(new_content, encoding="utf-8", newline="\n")
-    print("✅ Schema updated successfully!")
+    print("Schema updated successfully!")
 
     # Summary
     print("\nSchema Summary:")
