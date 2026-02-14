@@ -102,8 +102,23 @@ class PropertySchema:
         schema: dict[str, Any] = {}
 
         if self.enum_values:
-            schema["type"] = "string"
-            schema["enum"] = self.enum_values
+            # If the documented type is a list/set of strings, apply the enum to the
+            # array items rather than forcing the whole property to a scalar string.
+            if self.type_schema.get("type") == "array":
+                schema.update(self.type_schema)
+                items_schema: dict[str, Any]
+                existing_items = schema.get("items")
+                if isinstance(existing_items, dict):
+                    items_schema = dict(existing_items)
+                else:
+                    items_schema = {"type": "string"}
+
+                items_schema.setdefault("type", "string")
+                items_schema["enum"] = self.enum_values
+                schema["items"] = items_schema
+            else:
+                schema["type"] = "string"
+                schema["enum"] = self.enum_values
         elif self.type_schema:
             schema.update(self.type_schema)
         else:
@@ -459,16 +474,16 @@ class PropertyExtractor:
             elif current.name == "table":
                 # Parse Values table for enum values
                 enum_values = self._extract_table_values(current)
-                if enum_values and not prop.enum_values:
-                    prop.enum_values = enum_values
+                if enum_values:
+                    prop.enum_values = sorted(set(prop.enum_values).union(enum_values))
 
             elif current.name == "div":
                 # Tables may be wrapped in div.table-wrapper containers
                 table = current.find("table")
                 if table:
                     enum_values = self._extract_table_values(table)
-                    if enum_values and not prop.enum_values:
-                        prop.enum_values = enum_values
+                    if enum_values:
+                        prop.enum_values = sorted(set(prop.enum_values).union(enum_values))
 
             elif current.name == "dl":
                 # Fallback for definition list format
@@ -496,7 +511,7 @@ class PropertyExtractor:
                     if clean_value not in values:
                         values.append(clean_value)
 
-        return sorted(values)
+        return values
 
     def _process_definition_list(self, dl: Tag, prop: PropertySchema) -> None:
         """Process a definition list element (fallback format)."""

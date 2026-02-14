@@ -1821,11 +1821,18 @@
           "description": "The environment variables to define for the build step, as key-value pairs."
         },
         "build-attributes": {
-          "type": "string",
-          "enum": [
-            "disable-usrmerge",
-            "enable-usrmerge"
-          ],
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "core22-step-dependencies",
+              "disable-usrmerge",
+              "enable-patchelf",
+              "enable-usrmerge",
+              "keep-execstack",
+              "no-patchelf"
+            ]
+          },
           "description": "Special identifiers that change certain features and behavior during the build."
         },
         "override-build": {
