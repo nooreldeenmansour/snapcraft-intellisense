@@ -2,8 +2,8 @@ name: Sync Schema and Release
 
 on:
   schedule:
-    # Run weekly on Monday at 00:00 UTC
-    - cron: "0 0 * * 1"
+    # Run twice weekly on Monday and Thursday at 00:00 UTC
+    - cron: "0 0 * * 1,4"
   push:
     branches: [main]
     paths:
