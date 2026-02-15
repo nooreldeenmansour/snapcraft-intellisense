@@ -5,3 +5,5 @@ dist/
 .vscode-test/
 .DS_Store
 *.log
+snapcraft.yaml
+snapcraft.yml
