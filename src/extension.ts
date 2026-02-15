@@ -5,7 +5,7 @@ import * as path from 'path';
 // Documentation base URLs
 const DOCS_BASE = 'https://documentation.ubuntu.com/snapcraft/stable';
 const DOCS_REFERENCE = `${DOCS_BASE}/reference/project-file/snapcraft-yaml/`;
-const DOCS_PLUGINS = `${DOCS_BASE}/reference/plugins/`;
+const DOCS_PLUGINS = `${DOCS_BASE}/common/craft-parts/reference/plugins/`;
 const DOCS_BASES = `${DOCS_BASE}/reference/bases/`;
 const INTERFACES_DOCS = 'https://snapcraft.io/docs/supported-interfaces';
 
@@ -77,11 +77,11 @@ function getPropertyDocUrl(key: string): string {
 function getPluginDocUrl(plugin: string): string | null {
   // Handle special cases
   if (plugin === '.net' || plugin === 'dotnet') {
-    return `${DOCS_PLUGINS}dotnet-plugin/`;
+    return `${DOCS_PLUGINS}dotnet_plugin/`;
   }
 
-  // Most plugins follow: plugin-name-plugin/
-  return `${DOCS_PLUGINS}${plugin}-plugin/`;
+  // Most plugins follow: plugin_name_plugin/
+  return `${DOCS_PLUGINS}${plugin}_plugin/`;
 }
 
 /**
