@@ -196,25 +196,52 @@ jobs:
       - name: Package extension
         run: npx @vscode/vsce package
 
+      - name: Generate Release Body
+        id: generate_body
+        run: |
+          # Get the previous tag
+          PREV_TAG=$(git tag --sort=-version:refname | head -2 | tail -1)
+          if [ -z "$PREV_TAG" ]; then
+            PREV_TAG=$(git rev-list --max-parents=0 HEAD)  # First commit if no previous tag
+          fi
+
+          # Get commits since previous tag
+          COMMITS=$(git log --oneline --no-merges $PREV_TAG..HEAD)
+
+          # Format commits into a list
+          if [ -n "$COMMITS" ]; then
+            COMMIT_LIST=$(echo "$COMMITS" | sed 's/^/- /')
+            CHANGES_SECTION="### Recent Changes\n\n$COMMIT_LIST\n\n"
+          else
+            CHANGES_SECTION=""
+          fi
+
+          # Construct the release body
+          BODY="## Schema Update
+
+          This release includes the latest snapcraft.yaml schema from the [canonical/snapcraft](https://github.com/canonical/snapcraft) repository.
+
+          $CHANGES_SECTION### Changes
+          - Synced JSON schema with upstream snapcraft repository
+          - Updated IntelliSense and validation rules
+
+          ### Installation
+          Install from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=nooreldeensalah.snapcraft-intellisense) or download the \`.vsix\` file below and install manually.
+
+          ### Documentation
+          - [Snapcraft YAML Reference](https://documentation.ubuntu.com/snapcraft/stable/reference/project-file/snapcraft-yaml/)"
+
+          # Output the body
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          echo "$BODY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.sync-schema.outputs.new_version }}
           name: v${{ needs.sync-schema.outputs.new_version }}
-          body: |
-            ## Schema Update
-
-            This release includes the latest snapcraft.yaml schema from the [canonical/snapcraft](https://github.com/canonical/snapcraft) repository.
-
-            ### Changes
-            - Synced JSON schema with upstream snapcraft repository
-            - Updated IntelliSense and validation rules
-
-            ### Installation
-            Install from the VS Code Marketplace or download the `.vsix` file below and install manually.
-
-            ### Documentation
-            - [Snapcraft YAML Reference](https://documentation.ubuntu.com/snapcraft/stable/reference/project-file/snapcraft-yaml/)
+          body: ${{ steps.generate_body.outputs.body }}
           files: |
             *.vsix
           draft: false
