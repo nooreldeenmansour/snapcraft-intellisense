@@ -178,6 +178,10 @@ jobs:
           print("✅ Updated version in [project] section")
           PYTHON_EOF
 
+      - name: Update uv.lock
+        if: steps.check_changes.outputs.changed == 'true' || steps.check_script.outputs.changed == 'true' || github.event.inputs.force_release == 'true'
+        run: uv lock
+
       - name: Commit and push changes
         if: steps.check_changes.outputs.changed == 'true' || steps.check_script.outputs.changed == 'true' || github.event.inputs.force_release == 'true'
         run: |
@@ -185,7 +189,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           # Commit changes
-          git add schemas/snapcraft.json package.json pyproject.toml
+          git add schemas/snapcraft.json package.json pyproject.toml uv.lock
           git commit -m "chore: sync schema from upstream snapcraft (v${{ steps.version.outputs.version }})"
 
           # Create annotated tag BEFORE pushing
