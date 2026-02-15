@@ -1188,13 +1188,29 @@ class SchemaEnhancer:
                     "additionalProperties": plug_slot_value_schema,
                 }
 
-        # App-level plugs/slots are arrays of interface names (strings)
+        # App-level plugs/slots are arrays of interface names
+        app_interface_schema = {
+            "oneOf": [
+                {
+                    "title": "Standard Interface",
+                    "type": "string",
+                    "enum": self.interfaces
+                },
+                {
+                    "title": "Custom Interface",
+                    "type": "string",
+                    "pattern": "^[\\w-]+$",
+                    "not": {"enum": self.interfaces}
+                }
+            ]
+        }
+
         app_def = self.schema.get("$defs", {}).get("App", {})
         app_props = app_def.get("properties", {})
         if "plugs" in app_props and app_props["plugs"].get("type") == "array":
-            app_props["plugs"]["items"] = {"type": "string", "enum": self.interfaces}
+            app_props["plugs"]["items"] = app_interface_schema
         if "slots" in app_props and app_props["slots"].get("type") == "array":
-            app_props["slots"]["items"] = {"type": "string", "enum": self.interfaces}
+            app_props["slots"]["items"] = app_interface_schema
 
     def _enhance_architectures(self) -> None:
         """Add architecture enum to relevant fields."""

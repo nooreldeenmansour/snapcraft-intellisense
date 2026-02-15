@@ -26,83 +26,59 @@ const DOCUMENTATION_ITEMS = [
   { label: 'Components', url: `${DOCS_BASE}${urlsConfig.paths.components}` },
 ] as const;
 
+// Properties that have valid documentation anchors in the reference docs
+const VALID_PROPERTY_KEYS = new Set(urlsConfig.websiteAnchors);
+
 /**
  * Schema data manager - handles loading and caching of dynamic schema data.
  * Provides type-safe access to plugins, bases, and interfaces from the schema.
  */
 class SchemaDataManager {
-  private interfaces: ReadonlySet<string> = new Set();
-  private plugins: ReadonlySet<string> = new Set();
-  private bases: ReadonlySet<string> = new Set();
-  private loaded: boolean = false;
+  private interfaces = new Set<string>();
+  private plugins = new Set<string>();
+  private bases = new Set<string>();
 
-  /**
-   * Load schema data from the snapcraft.json file.
-   */
   load(context: vscode.ExtensionContext): void {
     try {
       const schemaPath = path.join(context.extensionPath, 'schemas', 'snapcraft.json');
-      const schemaContent = fs.readFileSync(schemaPath, 'utf8');
-      const schema: {
-        properties?: {
-          slots?: { propertyNames?: { enum?: string[] } };
-          base?: { enum?: string[] };
-        };
+      const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8')) as {
+        properties?: { base?: { enum?: string[] } };
         $defs?: {
           Part?: { properties?: { plugin?: { enum?: string[] } } };
+          App?: {
+            properties?: {
+              plugs?: {
+                items?: {
+                  oneOf?: Array<{ enum?: string[] }>;
+                  anyOf?: Array<{ enum?: string[] }>;
+                };
+              };
+            };
+          };
         };
-      } = JSON.parse(schemaContent);
+      };
 
-      this.interfaces = this.extractEnumValues(schema.properties?.slots?.propertyNames?.enum);
-      this.plugins = this.extractEnumValues(schema.$defs?.Part?.properties?.plugin?.enum);
-      this.bases = this.extractEnumValues(schema.properties?.base?.enum);
+      const plugsItems = schema.$defs?.App?.properties?.plugs?.items;
+      const interfaceEnum = plugsItems?.oneOf?.[0]?.enum || plugsItems?.anyOf?.[0]?.enum;
 
-      this.loaded = true;
-      console.log(`Schema data loaded: ${this.plugins.size} plugins, ${this.bases.size} bases, ${this.interfaces.size} interfaces`);
-    } catch (error) {
-      console.error('Failed to load schema data:', error);
-      // Keep empty sets on error
-      this.loaded = false;
+      this.interfaces = this.extractEnum(interfaceEnum);
+      this.plugins = this.extractEnum(schema.$defs?.Part?.properties?.plugin?.enum);
+      this.bases = this.extractEnum(schema.properties?.base?.enum);
+      console.log(`Schema loaded: ${this.plugins.size} plugins, ${this.bases.size} bases, ${this.interfaces.size} interfaces`);
+    } catch (e) {
+      console.error('Schema load failed:', e);
     }
   }
 
-  /**
-   * Extract enum values from schema, returning empty set if invalid.
-   */
-  private extractEnumValues(enumArray: unknown): ReadonlySet<string> {
-    return Array.isArray(enumArray) ? new Set(enumArray) : new Set();
+  private extractEnum(arr: unknown): Set<string> {
+    return new Set(Array.isArray(arr) ? arr : []);
   }
 
-  /**
-   * Check if a plugin name is valid.
-   */
-  isValidPlugin(name: string): boolean {
-    return this.plugins.has(name);
-  }
-
-  /**
-   * Check if a base name is valid.
-   */
-  isValidBase(name: string): boolean {
-    return this.bases.has(name);
-  }
-
-  /**
-   * Check if an interface name is valid.
-   */
-  isValidInterface(name: string): boolean {
-    return this.interfaces.has(name);
-  }
-
-  /**
-   * Get loading status.
-   */
-  isLoaded(): boolean {
-    return this.loaded;
-  }
+  isValidPlugin(name: string): boolean { return this.plugins.has(name); }
+  isValidBase(name: string): boolean { return this.bases.has(name); }
+  isValidInterface(name: string): boolean { return this.interfaces.has(name); }
 }
 
-// Global schema data manager instance
 const schemaData = new SchemaDataManager();
 
 function isHoverEnabled(): boolean {
@@ -134,13 +110,6 @@ function getPluginDocUrl(plugin: string): string | null {
 
   // Most plugins follow: plugin_name_plugin/
   return `${baseUrl}${normalizedPlugin.replace(/-/g, '_')}_plugin/`;
-}
-
-/**
- * Build base documentation URL.
- */
-function getBaseDocUrl(base: string): string {
-  return `${DOCS_BASES}#${base}`;
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -181,11 +150,7 @@ export function activate(context: vscode.ExtensionContext) {
  * The JSON schema provides basic descriptions; this adds clickable doc links.
  */
 class SnapcraftHoverProvider implements vscode.HoverProvider {
-  provideHover(
-    document: vscode.TextDocument,
-    position: vscode.Position,
-    _token: vscode.CancellationToken
-  ): vscode.Hover | null {
+  provideHover(document: vscode.TextDocument, position: vscode.Position): vscode.Hover | null {
     if (!isHoverEnabled()) return null;
 
     const wordRange = document.getWordRangeAtPosition(position, /[a-zA-Z0-9_-]+/);
@@ -193,86 +158,50 @@ class SnapcraftHoverProvider implements vscode.HoverProvider {
 
     const word = document.getText(wordRange);
     const lineText = document.lineAt(position.line).text;
-
-    // Check if this is a key or value
     const colonIndex = lineText.indexOf(':');
     const isKey = colonIndex === -1 || position.character < colonIndex;
 
+    const content = new vscode.MarkdownString();
+    content.isTrusted = true;
+
     if (isKey) {
-      // Provide documentation link for top-level keys
-      const docUrl = getPropertyDocUrl(word);
-      const content = new vscode.MarkdownString();
-      content.appendMarkdown(`**${word}**\n\n`);
-      content.appendMarkdown(`[View Documentation](${docUrl})`);
-      content.isTrusted = true;
-      return new vscode.Hover(content, wordRange);
+      if (VALID_PROPERTY_KEYS.has(word)) {
+        content.appendMarkdown(`[View Documentation](${getPropertyDocUrl(word)})\n\n`);
+      } else {
+        return null;
+      }
     } else {
-      // Provide documentation for values
       const key = lineText.substring(0, colonIndex).trim();
 
-      // Plugin documentation (loaded from schema)
       if (key === 'plugin' && schemaData.isValidPlugin(word)) {
-        const pluginUrl = getPluginDocUrl(word);
-        if (pluginUrl) {
-          const content = new vscode.MarkdownString();
-          content.appendMarkdown(`**${word}** plugin\n\n`);
-          content.appendMarkdown(`[View Plugin Documentation](${pluginUrl})`);
-          content.isTrusted = true;
-          return new vscode.Hover(content, wordRange);
-        }
-      }
-
-      // Base snap documentation (loaded from schema)
-      if ((key === 'base' || key === 'build-base') && schemaData.isValidBase(word)) {
-        const content = new vscode.MarkdownString();
-        content.appendMarkdown(`**${word}** base snap\n\n`);
-        content.appendMarkdown(`[View Base Documentation](${getBaseDocUrl(word)})`);
-        content.isTrusted = true;
-        return new vscode.Hover(content, wordRange);
-      }
-
-      // Interface documentation (loaded from schema)
-      if (schemaData.isValidInterface(word)) {
-        const context = this.getInterfaceContext(document, position);
-        if (context.isInPlugsOrSlots) {
-          const content = new vscode.MarkdownString();
-          content.appendMarkdown(`**${word}** interface\n\n`);
-          content.appendMarkdown(`Part of Snapcraft's interface system for controlled access to system resources.\n\n`);
-          content.appendMarkdown(`[View All Supported Interfaces](${INTERFACES_DOCS})`);
-          content.isTrusted = true;
-          return new vscode.Hover(content, wordRange);
+        const url = getPluginDocUrl(word);
+        if (url) content.appendMarkdown(`[View Plugin Documentation](${url})\n\n`);
+      } else if (schemaData.isValidInterface(word)) {
+        if (this.isInInterfaceContext(document, position)) {
+          content.appendMarkdown(`[View All Supported Interfaces](${INTERFACES_DOCS})\n\n`);
+          content.appendMarkdown(`Part of Snapcraft's interface system for controlled access to system resources.`);
         }
       }
     }
 
-    return null;
+    return content.value ? new vscode.Hover(content, wordRange) : null;
   }
 
-  /**
-   * Determine if the current position is within a plugs or slots section.
-   */
-  private getInterfaceContext(document: vscode.TextDocument, position: vscode.Position): { isInPlugsOrSlots: boolean } {
-    const currentLine = position.line;
-    let isInPlugsOrSlots = false;
+  private isInInterfaceContext(document: vscode.TextDocument, position: vscode.Position): boolean {
+    const currentIndent = document.lineAt(position.line).firstNonWhitespaceCharacterIndex;
 
-    // Look backwards for plugs: or slots: key at the same or lower indentation level
-    for (let i = currentLine; i >= Math.max(0, currentLine - 50); i--) {
-      const line = document.lineAt(i).text;
-      const match = line.match(/^(\s*)(plugs|slots):/);
+    for (let i = position.line - 1; i >= Math.max(0, position.line - 100); i--) {
+      const line = document.lineAt(i);
+      if (line.isEmptyOrWhitespace) continue;
 
+      const match = line.text.match(/^(\s*)(plugs|slots):\s*$/);
       if (match) {
         const keyIndent = match[1].length;
-        const currentIndent = document.lineAt(currentLine).text.match(/^(\s*)/)?.[1].length ?? 0;
-
-        // Check if we're at a deeper indentation (inside the section)
-        if (currentIndent > keyIndent) {
-          isInPlugsOrSlots = true;
-        }
-        break;
+        if (currentIndent > keyIndent) return true;
+        if (currentIndent <= keyIndent) return false;
       }
     }
-
-    return { isInPlugsOrSlots };
+    return false;
   }
 }
 
