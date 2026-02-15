@@ -12,8 +12,8 @@
     "vscode": "^1.95.0"
   },
   "categories": [
-    "Programming Languages",
-    "Linters"
+    "Linters",
+    "Other"
   ],
   "keywords": [
     "snapcraft",
@@ -25,7 +25,6 @@
   ],
   "icon": "images/icon.png",
   "activationEvents": [
-    "onLanguage:yaml",
     "workspaceContains:**/snapcraft.yaml",
     "workspaceContains:**/snapcraft.yml",
     "workspaceContains:**/snap/snapcraft.yaml",
@@ -39,12 +38,7 @@
     "yamlValidation": [
       {
         "fileMatch": [
-          "snapcraft.yaml",
-          "snapcraft.yml",
-          "**/snapcraft.yaml",
-          "**/snapcraft.yml",
-          "**/snap/snapcraft.yaml",
-          "**/snap/snapcraft.yml"
+          "**/snapcraft.{yaml,yml}"
         ],
         "url": "./schemas/snapcraft.json"
       }
@@ -55,7 +49,7 @@
         "snapcraft.hover.enable": {
           "type": "boolean",
           "default": true,
-          "description": "Enable/disable hover documentation"
+          "description": "Enable or disable hover documentation"
         }
       }
     },
