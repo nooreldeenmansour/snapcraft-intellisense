@@ -1,11 +1,11 @@
 [project]
 name = "snapcraft-intellisense"
-version = "1.0.2"
+version = "1.0.3"
 requires-python = ">=3.13"
 
 [tool.ruff]
 line-length = 88
-target-version = "py312"
+target-version = "1.0.3"
 
 [tool.ruff.lint]
 select = [
