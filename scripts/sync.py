@@ -960,6 +960,20 @@ class SchemaBuilder:
                     additional_properties=allow_additional,
                 ).to_json_schema()
 
+        # Docs list Socket.listen-stream as int, but examples allow UNIX socket paths
+        # and abstract names (strings). Allow both.
+        socket_def = defs.get("Socket")
+        if socket_def and isinstance(socket_def.get("properties"), dict):
+            listen_stream = socket_def["properties"].get("listen-stream")
+            if isinstance(listen_stream, dict) and listen_stream.get("type") == "integer":
+                desc = listen_stream.get(
+                    "description", "The socket’s abstract name or socket path."
+                )
+                socket_def["properties"]["listen-stream"] = {
+                    "anyOf": [{"type": "integer"}, {"type": "string"}],
+                    "description": desc,
+                }
+
         # Special handling for Component (needs hooks reference)
         if self.categorized["components"]:
             comp_props = self.categorized["components"].copy()
@@ -1128,6 +1142,32 @@ class SchemaBuilder:
                 "additionalProperties": True,
             },
         }
+
+        # source-code is documented as `str` but examples show `list[str]`.
+        # Allow both to avoid false schema errors.
+        if "source-code" in top_level:
+            sc_desc = top_level.get("source-code", {}).get(
+                "description",
+                "The links to the source code of the snap or the original product.",
+            )
+            top_level["source-code"] = {
+                "anyOf": [
+                    {"type": "string"},
+                    {"type": "array", "items": {"type": "string"}},
+                ],
+                "description": sc_desc,
+            }
+
+        # epoch is documented as `str` but YAML examples often use numbers (e.g., `epoch: 1`).
+        # Snapcraft treats it as a string internally (to support `2*`). Allow int too.
+        if "epoch" in top_level:
+            epoch_desc = top_level.get("epoch", {}).get(
+                "description", "The epoch associated with this version of the snap."
+            )
+            top_level["epoch"] = {
+                "anyOf": [{"type": "string"}, {"type": "integer"}],
+                "description": epoch_desc,
+            }
 
         return top_level
 
