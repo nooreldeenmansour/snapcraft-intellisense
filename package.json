@@ -2,7 +2,7 @@
   "name": "snapcraft-intellisense",
   "displayName": "Snapcraft Intellisense",
   "description": "Schema validation and IntelliSense for snapcraft.yaml project files. Provides autocompletion, validation, and hover documentation based on the official Snapcraft documentation.",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "publisher": "nooreldeensalah",
   "repository": {
     "type": "git",
