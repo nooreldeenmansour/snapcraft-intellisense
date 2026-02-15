@@ -13,3 +13,4 @@ tsconfig.json
 *.vsix
 .git/**
 snapcraft.yaml
+bin/
