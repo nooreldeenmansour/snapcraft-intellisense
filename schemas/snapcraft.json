@@ -123,8 +123,18 @@
       "description": "Selects a part to inherit metadata from and reuse for the snap’s\nmetadata."
     },
     "environment": {
-      "type": "string",
-      "description": "The snap’s runtime environment variables."
+      "type": "object",
+      "description": "The snap’s runtime environment variables.",
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
     },
     "package-repositories": {
       "type": "array",
@@ -171,14 +181,29 @@
       "description": "Specifies the algorithm that compresses the snap."
     },
     "layout": {
-      "type": "string",
-      "enum": [
-        "bind-file:<source-path>",
-        "bind:<source-path>",
-        "symlink:<source-path>",
-        "tmpfs:<source-path>"
-      ],
-      "description": "The file layouts in the execution environment."
+      "type": "object",
+      "description": "The file layouts in the execution environment.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "symlink": {
+            "type": "string"
+          },
+          "bind": {
+            "type": "string"
+          },
+          "bind-file": {
+            "type": "string"
+          },
+          "tmpfs": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      }
     },
     "passthrough": {
       "type": "object",
@@ -455,8 +480,9 @@
       }
     },
     "lint": {
-      "type": "string",
-      "description": "The linter configuration settings."
+      "type": "object",
+      "description": "The linter configuration settings.",
+      "additionalProperties": true
     },
     "epoch": {
       "type": "string",
@@ -864,7 +890,17 @@
           "description": "The ordered list of commands to run before the hook runs."
         },
         "environment": {
-          "type": "string",
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "description": "The environment variables for the hook."
         },
         "plugs": {

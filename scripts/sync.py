@@ -306,6 +306,9 @@ class TypeParser:
         "any": {},
         "none": {"type": "null"},
         "null": {"type": "null"},
+        # Custom documented types that are structured mappings in YAML.
+        # The docs use these as named types (e.g., `Lint`).
+        "lint": {"type": "object", "additionalProperties": True},
     }
 
     # Regex patterns
@@ -333,8 +336,8 @@ class TypeParser:
             if values:
                 return {"type": "string", "enum": values}
 
-        # Handle union types
-        if "|" in type_str:
+        # Handle union types (only split at top-level, not inside generics)
+        if cls._has_top_level_union(type_str):
             return cls._parse_union(type_str)
 
         return cls._parse_single(type_str)
@@ -342,7 +345,7 @@ class TypeParser:
     @classmethod
     def _parse_union(cls, type_str: str) -> dict[str, Any]:
         """Parse union types like 'str | list[str]'."""
-        parts = [p.strip() for p in type_str.split("|")]
+        parts = [p.strip() for p in cls._split_top_level_union(type_str)]
         any_of = [cls._parse_single(p) for p in parts if cls._parse_single(p)]
 
         if len(any_of) == 1:
@@ -358,7 +361,7 @@ class TypeParser:
 
         # Dict type: dict[KeyType, ValueType]
         if match := cls.DICT_PATTERN.match(type_str):
-            value_type = cls._parse_single(match.group(2).strip())
+            value_type = cls.parse(match.group(2).strip())
             return {
                 "type": "object",
                 "additionalProperties": value_type or True,
@@ -366,7 +369,7 @@ class TypeParser:
 
         # List type: list[ItemType]
         if match := cls.LIST_PATTERN.match(type_str):
-            item_type = cls._parse_single(match.group(1).strip())
+            item_type = cls.parse(match.group(1).strip())
             result: dict[str, Any] = {"type": "array"}
             if item_type:
                 result["items"] = item_type
@@ -374,7 +377,7 @@ class TypeParser:
 
         # Set type: set[ItemType] -> array with uniqueItems
         if match := cls.SET_PATTERN.match(type_str):
-            item_type = cls._parse_single(match.group(1).strip())
+            item_type = cls.parse(match.group(1).strip())
             result = {"type": "array", "uniqueItems": True}
             if item_type:
                 result["items"] = item_type
@@ -383,6 +386,38 @@ class TypeParser:
         # Basic types
         type_lower = type_str.lower()
         return cls.BASIC_TYPES.get(type_lower, {})
+
+    @staticmethod
+    def _split_top_level_union(type_str: str) -> list[str]:
+        """Split a type string by `|` only at top-level (outside `[...]`)."""
+        parts: list[str] = []
+        current: list[str] = []
+        bracket_depth = 0
+
+        for ch in type_str:
+            if ch == "[":
+                bracket_depth += 1
+            elif ch == "]":
+                bracket_depth = max(0, bracket_depth - 1)
+
+            if ch == "|" and bracket_depth == 0:
+                part = "".join(current).strip()
+                if part:
+                    parts.append(part)
+                current = []
+                continue
+
+            current.append(ch)
+
+        tail = "".join(current).strip()
+        if tail:
+            parts.append(tail)
+        return parts
+
+    @classmethod
+    def _has_top_level_union(cls, type_str: str) -> bool:
+        """Return True if `|` appears outside of `[...]`."""
+        return len(cls._split_top_level_union(type_str)) > 1
 
 
 # =============================================================================
@@ -1043,8 +1078,56 @@ class SchemaBuilder:
         # Lint reference
         if "Lint" in defs:
             top_level["lint"] = {"$ref": "#/$defs/Lint"}
-        elif "lint" not in top_level:
-            top_level["lint"] = {"type": "object", "additionalProperties": True}
+        else:
+            # The docs surface lint as a named type (`Lint`) but the detailed
+            # structure lives in separate reference pages. In the meantime,
+            # allow an object so real-world YAML validates.
+            lint_desc = top_level.get("lint", {}).get(
+                "description", "The linter configuration settings."
+            )
+            top_level["lint"] = {
+                "type": "object",
+                "description": lint_desc,
+                "additionalProperties": True,
+            }
+
+        # Environment is a mapping (dict) in YAML, not a scalar.
+        env_desc = top_level.get("environment", {}).get(
+            "description", "The snap’s runtime environment variables."
+        )
+        top_level["environment"] = {
+            "type": "object",
+            "description": env_desc,
+            "additionalProperties": {
+                "anyOf": [
+                    {"type": "string"},
+                    {"type": "null"},
+                ]
+            },
+        }
+
+        # Layout is a mapping from target path -> one of several layout actions.
+        # The reference page expresses these actions as "values", but the YAML
+        # shape is an object map.
+        layout_desc = top_level.get("layout", {}).get(
+            "description", "The file layouts in the execution environment."
+        )
+        top_level["layout"] = {
+            "type": "object",
+            "description": layout_desc,
+            "additionalProperties": {
+                "type": "object",
+                "properties": {
+                    "symlink": {"type": "string"},
+                    "bind": {"type": "string"},
+                    "bind-file": {"type": "string"},
+                    "tmpfs": {"type": "string"},
+                    # Some docs render this key as `type`; keep permissive.
+                    "type": {"type": "string"},
+                },
+                "additionalProperties": True,
+            },
+        }
 
         return top_level
 
