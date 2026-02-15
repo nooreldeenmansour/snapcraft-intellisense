@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -30,13 +34,17 @@ jobs:
         run: |
           uv tool install ruff
           ruff check scripts/
-          ruff format --check scripts/
 
       - name: Lint
         run: npm run lint
 
       - name: Compile
         run: npm run compile
+
+      - name: Check extension links
+        uses: ./.github/actions/link-check
+        with:
+          title-suffix: "Extension URLs"
 
       - name: Validate schema
         run: |

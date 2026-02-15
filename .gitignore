@@ -7,3 +7,7 @@ dist/
 *.log
 snapcraft.yaml
 snapcraft.yml
+
+# Lychee link checker cache
+.lycheecache
+.lychee-urls.txt

@@ -25,6 +25,7 @@ concurrency:
 permissions:
   contents: write
   pull-requests: write
+  issues: write
 
 jobs:
   sync-schema:
@@ -67,16 +68,22 @@ jobs:
           missing = [f for f in required_fields if f not in schema]
 
           if missing:
-              print(f"❌ Missing required fields: {missing}")
+              print(f"Missing required fields: {missing}")
               sys.exit(1)
 
           if not schema.get('$defs'):
-              print("⚠️  Warning: No $defs found in schema")
+              print("Warning: No $defs found in schema")
 
-          print("✅ Schema validation passed!")
+          print("Schema validation passed!")
           print(f"  - Title: {schema.get('title', 'N/A')}")
           print(f"  - Definitions: {len(schema.get('$defs', {}))}")
           VALIDATION
+
+      - name: Check extension links
+        if: success()
+        uses: ./.github/actions/link-check
+        with:
+          title-suffix: "Schema Sync"
 
       - name: Check for changes
         id: check_changes
@@ -113,7 +120,7 @@ jobs:
 
           # Validate version format
           if ! [[ $CURRENT_VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "❌ Invalid version format: $CURRENT_VERSION"
+            echo "Invalid version format: $CURRENT_VERSION"
             exit 1
           fi
 
@@ -139,6 +146,11 @@ jobs:
           jq '.version = "${{ steps.version.outputs.version }}"' package.json > package.json.tmp
           mv package.json.tmp package.json
 
+      - name: Update pyproject.toml version
+        if: steps.check_changes.outputs.changed == 'true' || steps.check_script.outputs.changed == 'true' || github.event.inputs.force_release == 'true'
+        run: |
+          sed -i 's/version = ".*"/version = "${{ steps.version.outputs.version }}"/' pyproject.toml
+
       - name: Commit and push changes
         if: steps.check_changes.outputs.changed == 'true' || steps.check_script.outputs.changed == 'true' || github.event.inputs.force_release == 'true'
         run: |
@@ -146,7 +158,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           # Commit changes
-          git add schemas/snapcraft.json package.json
+          git add schemas/snapcraft.json package.json pyproject.toml
           git commit -m "chore: sync schema from upstream snapcraft (v${{ steps.version.outputs.version }})"
 
           # Create annotated tag BEFORE pushing
@@ -243,5 +255,5 @@ jobs:
       - name: Verify publication
         if: success()
         run: |
-          echo "✅ Successfully published v${{ needs.sync-schema.outputs.new_version }} to VS Code Marketplace!"
+          echo "Successfully published v${{ needs.sync-schema.outputs.new_version }} to VS Code Marketplace!"
           echo "View at: https://marketplace.visualstudio.com/items?itemName=nooreldeensalah.snapcraft-intellisense"

@@ -2,63 +2,111 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 
-// Documentation base URLs
-const DOCS_BASE = 'https://documentation.ubuntu.com/snapcraft/stable';
-const DOCS_REFERENCE = `${DOCS_BASE}/reference/project-file/snapcraft-yaml/`;
-const DOCS_PLUGINS = `${DOCS_BASE}/common/craft-parts/reference/plugins/`;
-const DOCS_BASES = `${DOCS_BASE}/reference/bases/`;
-const INTERFACES_DOCS = 'https://snapcraft.io/docs/supported-interfaces';
+import urlsConfig from '../schemas/urls.json';
+const DOCS_BASE = urlsConfig.baseUrls.docs;
+const DOCS_REFERENCE = `${DOCS_BASE}${urlsConfig.paths.reference}`;
+const DOCS_PLUGINS = `${DOCS_BASE}${urlsConfig.paths.plugins}`;
+const DOCS_BASES = `${DOCS_BASE}${urlsConfig.paths.bases}`;
+const INTERFACES_DOCS = urlsConfig.baseUrls.interfaces;
 
-// Cached schema data
-let schemaInterfaces: Set<string> | null = null;
-let schemaPlugins: Set<string> | null = null;
-let schemaBases: Set<string> | null = null;
+// Plugin special cases (from config)
+const REFERENCE_PLUGINS = new Set(urlsConfig.pluginSpecialCases.referencePlugins);
+const PLUGIN_ALIASES = urlsConfig.pluginSpecialCases.aliasMapping as Record<string, string>;
+
+// Documentation menu items for command palette
+const DOCUMENTATION_ITEMS = [
+  { label: 'Snapcraft YAML Reference', url: DOCS_REFERENCE },
+  { label: 'Plugins', url: `${DOCS_BASE}${urlsConfig.paths.referencePlugins}` },
+  { label: 'Interfaces', url: INTERFACES_DOCS },
+  { label: 'Extensions', url: `${DOCS_BASE}${urlsConfig.paths.extensions}` },
+  { label: 'Bases', url: DOCS_BASES },
+  { label: 'Layouts', url: `${DOCS_BASE}${urlsConfig.paths.layouts}` },
+  { label: 'Hooks', url: `${DOCS_BASE}${urlsConfig.paths.hooks}` },
+  { label: 'Package Repositories', url: `${DOCS_BASE}${urlsConfig.paths.packageRepositories}` },
+  { label: 'Components', url: `${DOCS_BASE}${urlsConfig.paths.components}` },
+] as const;
+
+/**
+ * Schema data manager - handles loading and caching of dynamic schema data.
+ * Provides type-safe access to plugins, bases, and interfaces from the schema.
+ */
+class SchemaDataManager {
+  private interfaces: ReadonlySet<string> = new Set();
+  private plugins: ReadonlySet<string> = new Set();
+  private bases: ReadonlySet<string> = new Set();
+  private loaded: boolean = false;
+
+  /**
+   * Load schema data from the snapcraft.json file.
+   */
+  load(context: vscode.ExtensionContext): void {
+    try {
+      const schemaPath = path.join(context.extensionPath, 'schemas', 'snapcraft.json');
+      const schemaContent = fs.readFileSync(schemaPath, 'utf8');
+      const schema: {
+        properties?: {
+          slots?: { propertyNames?: { enum?: string[] } };
+          base?: { enum?: string[] };
+        };
+        $defs?: {
+          Part?: { properties?: { plugin?: { enum?: string[] } } };
+        };
+      } = JSON.parse(schemaContent);
+
+      this.interfaces = this.extractEnumValues(schema.properties?.slots?.propertyNames?.enum);
+      this.plugins = this.extractEnumValues(schema.$defs?.Part?.properties?.plugin?.enum);
+      this.bases = this.extractEnumValues(schema.properties?.base?.enum);
+
+      this.loaded = true;
+      console.log(`Schema data loaded: ${this.plugins.size} plugins, ${this.bases.size} bases, ${this.interfaces.size} interfaces`);
+    } catch (error) {
+      console.error('Failed to load schema data:', error);
+      // Keep empty sets on error
+      this.loaded = false;
+    }
+  }
+
+  /**
+   * Extract enum values from schema, returning empty set if invalid.
+   */
+  private extractEnumValues(enumArray: unknown): ReadonlySet<string> {
+    return Array.isArray(enumArray) ? new Set(enumArray) : new Set();
+  }
+
+  /**
+   * Check if a plugin name is valid.
+   */
+  isValidPlugin(name: string): boolean {
+    return this.plugins.has(name);
+  }
+
+  /**
+   * Check if a base name is valid.
+   */
+  isValidBase(name: string): boolean {
+    return this.bases.has(name);
+  }
+
+  /**
+   * Check if an interface name is valid.
+   */
+  isValidInterface(name: string): boolean {
+    return this.interfaces.has(name);
+  }
+
+  /**
+   * Get loading status.
+   */
+  isLoaded(): boolean {
+    return this.loaded;
+  }
+}
+
+// Global schema data manager instance
+const schemaData = new SchemaDataManager();
 
 function isHoverEnabled(): boolean {
   return vscode.workspace.getConfiguration('snapcraft').get<boolean>('hover.enable', true);
-}
-
-/**
- * Load dynamic data from the generated schema file.
- */
-function loadSchemaData(context: vscode.ExtensionContext): void {
-  try {
-    const schemaPath = path.join(context.extensionPath, 'schemas', 'snapcraft.json');
-    const schemaContent = fs.readFileSync(schemaPath, 'utf8');
-    const schema = JSON.parse(schemaContent);
-
-    // Extract interface names from slots propertyNames enum
-    const slotsEnum = schema.properties?.slots?.propertyNames?.enum;
-    if (Array.isArray(slotsEnum)) {
-      schemaInterfaces = new Set(slotsEnum);
-      console.log(`Loaded ${schemaInterfaces.size} interfaces from schema`);
-    } else {
-      schemaInterfaces = new Set();
-    }
-
-    // Extract plugin names from Part definition
-    const pluginEnum = schema.$defs?.Part?.properties?.plugin?.enum;
-    if (Array.isArray(pluginEnum)) {
-      schemaPlugins = new Set(pluginEnum);
-      console.log(`Loaded ${schemaPlugins.size} plugins from schema`);
-    } else {
-      schemaPlugins = new Set();
-    }
-
-    // Extract base names from base property enum
-    const baseEnum = schema.properties?.base?.enum;
-    if (Array.isArray(baseEnum)) {
-      schemaBases = new Set(baseEnum);
-      console.log(`Loaded ${schemaBases.size} bases from schema`);
-    } else {
-      schemaBases = new Set();
-    }
-  } catch (error) {
-    console.error('Failed to load schema data:', error);
-    schemaInterfaces = new Set();
-    schemaPlugins = new Set();
-    schemaBases = new Set();
-  }
 }
 
 /**
@@ -72,16 +120,20 @@ function getPropertyDocUrl(key: string): string {
 
 /**
  * Build plugin documentation URL.
- * Plugins use the pattern: plugin-name-plugin/
+ * Some plugins are in /common/craft-parts/reference/plugins/, others in /reference/plugins/
+ * Uses urls.json for plugin routing (single source of truth)
  */
 function getPluginDocUrl(plugin: string): string | null {
-  // Handle special cases
-  if (plugin === '.net' || plugin === 'dotnet') {
-    return `${DOCS_PLUGINS}dotnet_plugin/`;
-  }
+  // Handle plugin aliases (e.g., .net -> dotnet)
+  const normalizedPlugin = PLUGIN_ALIASES[plugin] || plugin;
+
+  // Reference plugins use different base path
+  const baseUrl = REFERENCE_PLUGINS.has(plugin)
+    ? `${DOCS_BASE}${urlsConfig.paths.referencePlugins}`
+    : DOCS_PLUGINS;
 
   // Most plugins follow: plugin_name_plugin/
-  return `${DOCS_PLUGINS}${plugin}_plugin/`;
+  return `${baseUrl}${normalizedPlugin.replace(/-/g, '_')}_plugin/`;
 }
 
 /**
@@ -95,7 +147,7 @@ export function activate(context: vscode.ExtensionContext) {
   console.log('Snapcraft YAML extension is now active');
 
   // Load schema data for hover providers
-  loadSchemaData(context);
+  schemaData.load(context);
 
   // Register hover provider for enhanced documentation links
   const hoverProvider = vscode.languages.registerHoverProvider(
@@ -159,7 +211,7 @@ class SnapcraftHoverProvider implements vscode.HoverProvider {
       const key = lineText.substring(0, colonIndex).trim();
 
       // Plugin documentation (loaded from schema)
-      if (key === 'plugin' && schemaPlugins && schemaPlugins.has(word)) {
+      if (key === 'plugin' && schemaData.isValidPlugin(word)) {
         const pluginUrl = getPluginDocUrl(word);
         if (pluginUrl) {
           const content = new vscode.MarkdownString();
@@ -171,7 +223,7 @@ class SnapcraftHoverProvider implements vscode.HoverProvider {
       }
 
       // Base snap documentation (loaded from schema)
-      if ((key === 'base' || key === 'build-base') && schemaBases && schemaBases.has(word)) {
+      if ((key === 'base' || key === 'build-base') && schemaData.isValidBase(word)) {
         const content = new vscode.MarkdownString();
         content.appendMarkdown(`**${word}** base snap\n\n`);
         content.appendMarkdown(`[View Base Documentation](${getBaseDocUrl(word)})`);
@@ -180,7 +232,7 @@ class SnapcraftHoverProvider implements vscode.HoverProvider {
       }
 
       // Interface documentation (loaded from schema)
-      if (schemaInterfaces && schemaInterfaces.has(word)) {
+      if (schemaData.isValidInterface(word)) {
         const context = this.getInterfaceContext(document, position);
         if (context.isInPlugsOrSlots) {
           const content = new vscode.MarkdownString();
@@ -225,17 +277,7 @@ class SnapcraftHoverProvider implements vscode.HoverProvider {
 }
 
 async function showDocumentation(): Promise<void> {
-  const choice = await vscode.window.showQuickPick([
-    { label: 'Snapcraft YAML Reference', url: DOCS_REFERENCE },
-    { label: 'Plugins', url: DOCS_PLUGINS },
-    { label: 'Interfaces', url: INTERFACES_DOCS },
-    { label: 'Extensions', url: `${DOCS_BASE}/reference/extensions/` },
-    { label: 'Bases', url: DOCS_BASES },
-    { label: 'Layouts', url: `${DOCS_BASE}/reference/layouts/` },
-    { label: 'Hooks', url: `${DOCS_BASE}/reference/hooks/` },
-    { label: 'Package Repositories', url: `${DOCS_BASE}/reference/package-repositories/` },
-    { label: 'Components', url: `${DOCS_BASE}/reference/components/` },
-  ], {
+  const choice = await vscode.window.showQuickPick(DOCUMENTATION_ITEMS, {
     placeHolder: 'Select documentation to view'
   });
 

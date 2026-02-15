@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Single source of truth for documentation URLs. This configuration is used by both extension.ts and extract_urls.py. When updating documentation URLs, plugin routing, or adding new documentation sections, update this file only. Do not modify URL constants directly in source files.",
+  "baseUrls": {
+    "docs": "https://documentation.ubuntu.com/snapcraft/stable",
+    "interfaces": "https://snapcraft.io/docs/supported-interfaces"
+  },
+  "paths": {
+    "reference": "/reference/project-file/snapcraft-yaml/",
+    "plugins": "/common/craft-parts/reference/plugins/",
+    "referencePlugins": "/reference/plugins/",
+    "bases": "/reference/bases/",
+    "extensions": "/reference/extensions/",
+    "layouts": "/reference/layouts/",
+    "hooks": "/reference/hooks/",
+    "packageRepositories": "/reference/package-repositories/",
+    "components": "/reference/components/"
+  },
+  "pluginSpecialCases": {
+    "referencePlugins": [
+      "crystal",
+      "catkin",
+      "catkin-tools",
+      "colcon",
+      "conda",
+      "flutter",
+      "matter-sdk",
+      "maven",
+      "poetry",
+      "python",
+      "uv"
+    ],
+    "aliasMapping": {
+      ".net": "dotnet",
+      "dotnet": "dotnet"
+    }
+  }
+}

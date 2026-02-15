@@ -1,0 +1,29 @@
+# Lychee Link Checker Configuration (v0.23)
+# For snapcraft-intellisense extension
+# Checks all user-facing documentation URLs exposed via hover and command palette
+
+# Accept successful HTTP status codes
+accept = [200, 204]
+
+# Network settings
+timeout = 30
+max_retries = 3
+max_redirects = 10
+
+# User agent for requests
+user_agent = "Mozilla/5.0 (compatible; Snapcraft-Intellisense-LinkChecker/1.0)"
+
+# Cache settings (CLI flags override these)
+cache = true
+max_cache_age = "1d"
+
+# Output settings
+# verbose accepts log levels: "error", "warn", "info", "debug", "trace"
+# verbose = "info"
+
+# Don't show interactive progress bar while checking links
+no_progress = false
+
+# Base domains checked:
+# - documentation.ubuntu.com/snapcraft/stable/*
+# - snapcraft.io/docs/*
