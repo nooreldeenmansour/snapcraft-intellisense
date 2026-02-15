@@ -149,7 +149,34 @@ jobs:
       - name: Update pyproject.toml version
         if: steps.check_changes.outputs.changed == 'true' || steps.check_script.outputs.changed == 'true' || github.event.inputs.force_release == 'true'
         run: |
-          sed -i 's/version = ".*"/version = "${{ steps.version.outputs.version }}"/' pyproject.toml
+          # Use Python to safely update version in [project] section only
+          python3 << 'PYTHON_EOF'
+          import re
+
+          with open('pyproject.toml', 'r') as f:
+              lines = f.readlines()
+
+          # Find and update version in [project] section
+          in_project_section = False
+          updated = False
+
+          for i, line in enumerate(lines):
+              if line.strip().startswith('[project]'):
+                  in_project_section = True
+              elif line.strip().startswith('[') and in_project_section:
+                  # We've left the [project] section
+                  in_project_section = False
+
+              if in_project_section and line.startswith('version = "') and not updated:
+                  lines[i] = f'version = "${{ steps.version.outputs.version }}"\n'
+                  updated = True
+                  break
+
+          with open('pyproject.toml', 'w') as f:
+              f.writelines(lines)
+
+          print("✅ Updated version in [project] section")
+          PYTHON_EOF
 
       - name: Commit and push changes
         if: steps.check_changes.outputs.changed == 'true' || steps.check_script.outputs.changed == 'true' || github.event.inputs.force_release == 'true'
@@ -196,25 +223,95 @@ jobs:
       - name: Package extension
         run: npx @vscode/vsce package
 
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          # Get commit messages since last release
+          PREVIOUS_TAG=$(git tag -l 'v*' --sort=-version:refname | head -2 | tail -1)
+
+          if [ -z "$PREVIOUS_TAG" ]; then
+            COMMIT_RANGE="HEAD~5..HEAD"
+            COMMITS_TITLE="Recent updates"
+          else
+            COMMIT_RANGE="${PREVIOUS_TAG}..HEAD"
+            COMMITS_TITLE="Changes since $PREVIOUS_TAG"
+          fi
+
+          # Get commit messages (excluding merge commits and the auto-sync message)
+          COMMIT_LOG=$(git log $COMMIT_RANGE --pretty=format:"- %s (%an)" | grep -v "chore: sync schema" | head -10)
+
+          # Get schema stats
+          SCHEMA_DEFS=$(jq '.["$defs"] | length' schemas/snapcraft.json 2>/dev/null || echo "N/A")
+          SCHEMA_PROPS=$(jq '.properties | length' schemas/snapcraft.json 2>/dev/null || echo "N/A")
+
+          # Format release notes
+          cat > /tmp/release_body.txt << 'EOF'
+          ## 🎉 Snapcraft IntelliSense v${{ needs.sync-schema.outputs.new_version }}
+
+          This release updates the Snapcraft YAML schema with the latest definitions from the [canonical/snapcraft](https://github.com/canonical/snapcraft) repository, providing enhanced IntelliSense and validation for VS Code.
+
+          ### 📋 What's Included
+
+          **Schema Update:**
+          - ✅ Synced latest snapcraft.yaml schema from official Snapcraft documentation
+          - 📊 **Schema Coverage:** $SCHEMA_DEFS definitions, $SCHEMA_PROPS top-level properties
+          - 🔍 Full validation with IntelliSense completion
+          - 📎 Hover documentation links for all fields
+
+          **Recent Updates:**
+          $COMMIT_LOG
+
+          ### 🚀 Features
+
+          - **IntelliSense & Autocomplete** - Full property and value completion for snapcraft.yaml
+          - **Schema Validation** - Real-time validation with clear error messages
+          - **Hover Documentation** - Interactive links to official Snapcraft documentation
+          - **Interface Support** - Complete autocomplete for all Snapcraft plugs and slots
+
+          ### 📦 Installation
+
+          **Option 1: VS Code Marketplace**
+
+          Install directly from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=nooreldeensalah.snapcraft-intellisense) or search for "Snapcraft Intellisense" in the Extensions panel.
+
+          **Option 2: Manual Installation**
+
+          Download the `.vsix` file from this release and install it using:
+          ```bash
+          code --install-extension snapcraft-intellisense-*.vsix
+          ```
+
+          ### 📚 Documentation
+
+          - [**Snapcraft YAML Reference**](https://documentation.ubuntu.com/snapcraft/stable/reference/project-file/snapcraft-yaml/)
+          - [**Plugin Reference**](https://documentation.ubuntu.com/snapcraft/stable/reference/plugins/)
+          - [**Interface Reference**](https://snapcraft.io/docs/supported-interfaces)
+          - [**Project Repository**](https://github.com/nooreldeensalah/snapcraft-intellisense)
+
+          ### 💡 Tips
+
+          - Use `Ctrl+Space` (or `Cmd+Space` on macOS) to trigger IntelliSense
+          - Hover over any property to see documentation and examples
+          - Use the Command Palette (`Ctrl+Shift+P`) and search for "Snapcraft" to access commands
+
+          ---
+          *Happy snapping! 🛠️*
+          EOF
+
+          # Replace placeholders and output to environment
+          cat /tmp/release_body.txt | sed "s|\${{ needs.sync-schema.outputs.new_version }}|${{ needs.sync-schema.outputs.new_version }}|g" | sed "s|\$SCHEMA_DEFS|$SCHEMA_DEFS|g" | sed "s|\$SCHEMA_PROPS|$SCHEMA_PROPS|g" > /tmp/release_final.txt
+
+          # Store for use in release
+          echo "release_notes<<EOF" >> $GITHUB_OUTPUT
+          cat /tmp/release_final.txt >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.sync-schema.outputs.new_version }}
           name: v${{ needs.sync-schema.outputs.new_version }}
-          body: |
-            ## Schema Update
-
-            This release includes the latest snapcraft.yaml schema from the [canonical/snapcraft](https://github.com/canonical/snapcraft) repository.
-
-            ### Changes
-            - Synced JSON schema with upstream snapcraft repository
-            - Updated IntelliSense and validation rules
-
-            ### Installation
-            Install from the VS Code Marketplace or download the `.vsix` file below and install manually.
-
-            ### Documentation
-            - [Snapcraft YAML Reference](https://documentation.ubuntu.com/snapcraft/stable/reference/project-file/snapcraft-yaml/)
+          body: ${{ steps.release_notes.outputs.release_notes }}
           files: |
             *.vsix
           draft: false
