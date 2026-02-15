@@ -51,7 +51,17 @@
       ]
     },
     "source-code": {
-      "type": "string",
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ],
       "description": "The links to the source code of the snap or the original product."
     },
     "license": {
@@ -485,7 +495,14 @@
       "additionalProperties": true
     },
     "epoch": {
-      "type": "string",
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer"
+        }
+      ],
       "description": "The epoch associated with this version of the snap."
     },
     "system-usernames": {
@@ -868,7 +885,14 @@
       "description": "Socket configuration for app activation",
       "properties": {
         "listen-stream": {
-          "type": "integer",
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
           "description": "The socket’s abstract name or socket path."
         },
         "socket-mode": {

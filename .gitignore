@@ -8,6 +8,10 @@ dist/
 snapcraft.yaml
 snapcraft.yml
 
+# Python artifacts
+__pycache__/
+*.pyc
+
 # Lychee link checker cache
 .lycheecache
 .lychee-urls.txt
