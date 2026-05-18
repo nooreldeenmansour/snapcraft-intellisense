@@ -34,7 +34,8 @@
         "core18",
         "core20",
         "core22",
-        "core24"
+        "core24",
+        "core26"
       ]
     },
     "build-base": {
@@ -47,6 +48,7 @@
         "core20",
         "core22",
         "core24",
+        "core26",
         "devel"
       ]
     },
@@ -2182,28 +2184,11 @@
               "dotnet8",
               "dotnet9",
               "env-injector",
-              "flutter-beta",
-              "flutter-dev",
-              "flutter-master",
-              "flutter-stable",
               "gnome",
-              "gnome-3-28",
-              "gnome-3-34",
-              "gnome-3-38",
               "gpu",
               "kde-neon",
               "kde-neon-6",
               "kde-neon-qt6",
-              "ros1-noetic",
-              "ros1-noetic-desktop",
-              "ros1-noetic-perception",
-              "ros1-noetic-robot",
-              "ros1-noetic-ros-base",
-              "ros1-noetic-ros-core",
-              "ros2-foxy",
-              "ros2-foxy-desktop",
-              "ros2-foxy-ros-base",
-              "ros2-foxy-ros-core",
               "ros2-humble",
               "ros2-humble-desktop",
               "ros2-humble-ros-base",
@@ -2229,6 +2214,7 @@
           "enum": [
             "ant",
             "autotools",
+            "bazel",
             "cargo-use",
             "catkin",
             "catkin-tools",
@@ -2247,9 +2233,11 @@
             "make",
             "matter-sdk",
             "maven",
+            "maven-use",
             "meson",
             "nil",
             "npm",
+            "npm-use",
             "poetry",
             "python",
             "qmake",
@@ -2277,6 +2265,7 @@
         "source-type": {
           "type": "string",
           "enum": [
+            "7z",
             "deb",
             "file",
             "git",

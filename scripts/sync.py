@@ -716,7 +716,7 @@ class ExtensionParser:
 
     # GitHub raw URLs for the registry files
     REGISTRY_URL = "https://raw.githubusercontent.com/canonical/snapcraft/main/snapcraft/extensions/registry.py"
-    LEGACY_SCHEMA_URL = "https://raw.githubusercontent.com/canonical/snapcraft/main/schema/snapcraft-legacy.json"
+    SCHEMA_URL = "https://raw.githubusercontent.com/canonical/snapcraft/main/schema/snapcraft.json"
 
     @classmethod
     def parse(cls, min_expected: int) -> list[str]:
@@ -724,7 +724,7 @@ class ExtensionParser:
 
         Fetches from two sources:
         1. Modern extensions (core22+): registry.py
-        2. Legacy extensions (core18/core20): snapcraft-legacy.json
+        2. Schema extensions fallback: snapcraft.json
 
         Args:
             min_expected: Minimum number of extensions expected
@@ -751,26 +751,26 @@ class ExtensionParser:
         except (requests.exceptions.RequestException, OSError) as e:
             print(f"  Warning: Failed to fetch modern extensions: {e}")
 
-        # Fetch legacy extensions from snapcraft-legacy.json
+        # Fetch extensions from the schema as a legacy fallback
         try:
-            print("  Fetching legacy extensions from snapcraft-legacy.json")
-            legacy_schema = HTTPClient.fetch(cls.LEGACY_SCHEMA_URL)
-            legacy_data = json.loads(legacy_schema)
+            print("  Fetching schema extensions from snapcraft.json")
+            schema_content = HTTPClient.fetch(cls.SCHEMA_URL)
+            legacy_data = json.loads(schema_content)
 
             # Find extensions enum in the schema
             legacy_extensions = cls._extract_legacy_extensions(legacy_data)
             if legacy_extensions:
                 extensions.update(legacy_extensions)
                 legacy_count = len(legacy_extensions)
-                print(f"  Found {legacy_count} legacy extensions")
+                print(f"  Found {legacy_count} schema extensions")
             else:
-                print("  Warning: No extensions found in legacy schema")
+                print("  Warning: No extensions found in schema")
         except (
             requests.exceptions.RequestException,
             OSError,
             json.JSONDecodeError,
         ) as e:
-            print(f"  Warning: Failed to fetch legacy extensions: {e}")
+            print(f"  Warning: Failed to fetch schema extensions: {e}")
 
         result = sorted(extensions)
         if len(result) < min_expected:

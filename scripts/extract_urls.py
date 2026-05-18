@@ -115,7 +115,7 @@ def build_urls(config, schema):
     # Check them to catch early if Canonical restructures their repository.
     infrastructure_urls = [
         "https://raw.githubusercontent.com/canonical/snapcraft/main/snapcraft/extensions/registry.py",
-        "https://raw.githubusercontent.com/canonical/snapcraft/main/schema/snapcraft-legacy.json",
+        "https://raw.githubusercontent.com/canonical/snapcraft/main/schema/snapcraft.json",
     ]
     urls.extend(infrastructure_urls)
 
