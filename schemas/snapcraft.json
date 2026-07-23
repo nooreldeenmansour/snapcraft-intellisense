@@ -2181,6 +2181,7 @@
             "type": "string",
             "enum": [
               "dotnet10",
+              "dotnet11",
               "dotnet8",
               "dotnet9",
               "env-injector",
