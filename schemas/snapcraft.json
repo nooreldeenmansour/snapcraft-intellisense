@@ -295,7 +295,7 @@
                   "docker-support",
                   "dsp",
                   "dvb",
-                  "egl-driver-libs]",
+                  "egl-driver-libs",
                   "empty",
                   "firewall-control",
                   "firmware-update-support",
@@ -593,6 +593,12 @@
         "$ref": "#/$defs/App"
       }
     },
+    "General app keys": {
+      "type": "string"
+    },
+    "Service and daemon keys": {
+      "type": "string"
+    },
     "parts": {
       "type": "object",
       "description": "Part definitions for building the snap",
@@ -680,7 +686,7 @@
                   "docker-support",
                   "dsp",
                   "dvb",
-                  "egl-driver-libs]",
+                  "egl-driver-libs",
                   "empty",
                   "firewall-control",
                   "firmware-update-support",
@@ -1094,6 +1100,14 @@
         "adopt-info": {
           "type": "string",
           "description": "Selects a part to inherit metadata from and reuse for the component’s metadata."
+        },
+        "compression": {
+          "type": "string",
+          "enum": [
+            "lzo",
+            "xz"
+          ],
+          "description": "Specifies the algorithm that compresses this component."
         }
       },
       "additionalProperties": false
@@ -1125,113 +1139,6 @@
         "completer": {
           "type": "string",
           "description": "The name of the bash completion script for the app."
-        },
-        "stop-command": {
-          "type": "string",
-          "description": "The command to run to stop the service."
-        },
-        "post-stop-command": {
-          "type": "string",
-          "description": "The command to run after the service is stopped."
-        },
-        "start-timeout": {
-          "type": "string",
-          "description": "The maximum amount of time to wait for the service to start."
-        },
-        "stop-timeout": {
-          "type": "string",
-          "description": "The maximum amount of time to wait for the service to stop."
-        },
-        "watchdog-timeout": {
-          "type": "string",
-          "description": "The maximum amount of time the service can run without sending a\nheartbeat to the watchdog."
-        },
-        "reload-command": {
-          "type": "string",
-          "description": "The command to run to restart the service."
-        },
-        "restart-delay": {
-          "type": "string",
-          "description": "The time to wait between service restarts."
-        },
-        "timer": {
-          "type": "string",
-          "description": "The time or schedule to run a service."
-        },
-        "daemon": {
-          "type": "string",
-          "enum": [
-            "dbus",
-            "forking",
-            "notify",
-            "oneshot",
-            "simple"
-          ],
-          "description": "Configures the app as a service, and sets its runtime and\nnotification behavior."
-        },
-        "after": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "The ordered list of apps that the service runs after it launches."
-        },
-        "before": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "The ordered list of apps that the service runs before it launches."
-        },
-        "refresh-mode": {
-          "type": "string",
-          "enum": [
-            "endure",
-            "ignore-running",
-            "restart"
-          ],
-          "description": "Determines how the service should restart when the snap refreshes."
-        },
-        "stop-mode": {
-          "type": "string",
-          "enum": [
-            "sigterm",
-            "sigterm-all",
-            "sighup",
-            "sighup-all",
-            "sigusr1",
-            "sigusr1-all",
-            "sigusr2",
-            "sigusr2-all",
-            "sigint",
-            "sigint-all"
-          ],
-          "description": "The signal to send when stopping the service."
-        },
-        "restart-condition": {
-          "type": "string",
-          "enum": [
-            "on-success",
-            "on-failure",
-            "on-abnormal",
-            "on-abort",
-            "on-watchdog",
-            "always",
-            "never"
-          ],
-          "description": "The conditions that cause the service to restart."
-        },
-        "success-exit-status": {
-          "type": "array",
-          "description": "The list of additional successful exit statuses that the service can return."
-        },
-        "install-mode": {
-          "type": "string",
-          "enum": [
-            "disable",
-            "enable"
-          ],
-          "description": "Whether snapd can automatically start the service when the snap is installed."
         },
         "slots": {
           "type": "array",
@@ -1290,7 +1197,7 @@
                   "docker-support",
                   "dsp",
                   "dvb",
-                  "egl-driver-libs]",
+                  "egl-driver-libs",
                   "empty",
                   "firewall-control",
                   "firmware-update-support",
@@ -1510,7 +1417,7 @@
                     "docker-support",
                     "dsp",
                     "dvb",
-                    "egl-driver-libs]",
+                    "egl-driver-libs",
                     "empty",
                     "firewall-control",
                     "firmware-update-support",
@@ -1737,7 +1644,7 @@
                   "docker-support",
                   "dsp",
                   "dvb",
-                  "egl-driver-libs]",
+                  "egl-driver-libs",
                   "empty",
                   "firewall-control",
                   "firmware-update-support",
@@ -1957,7 +1864,7 @@
                     "docker-support",
                     "dsp",
                     "dvb",
-                    "egl-driver-libs]",
+                    "egl-driver-libs",
                     "empty",
                     "firewall-control",
                     "firmware-update-support",
@@ -2148,28 +2055,6 @@
           },
           "description": "The ordered list of commands to run before the app’s command\nruns."
         },
-        "sockets": {
-          "type": "object",
-          "description": "Socket activation configuration",
-          "additionalProperties": {
-            "$ref": "#/$defs/Socket"
-          }
-        },
-        "daemon-scope": {
-          "type": "string",
-          "enum": [
-            "system",
-            "user"
-          ],
-          "description": "Determines whether the service is run on a system or a user instance of\nsystemd."
-        },
-        "activates-on": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "The slots exposed by the snap to activate the service with D-Bus."
-        },
         "passthrough": {
           "type": "object",
           "additionalProperties": true,
@@ -2205,6 +2090,135 @@
             ]
           },
           "description": "The extensions to add to the project"
+        },
+        "daemon": {
+          "type": "string",
+          "enum": [
+            "dbus",
+            "forking",
+            "notify",
+            "oneshot",
+            "simple"
+          ],
+          "description": "Configures the app as a service, and sets its runtime and\nnotification behavior."
+        },
+        "sockets": {
+          "type": "object",
+          "description": "Socket activation configuration",
+          "additionalProperties": {
+            "$ref": "#/$defs/Socket"
+          }
+        },
+        "stop-command": {
+          "type": "string",
+          "description": "The command to run to stop the service."
+        },
+        "post-stop-command": {
+          "type": "string",
+          "description": "The command to run after the service is stopped."
+        },
+        "start-timeout": {
+          "type": "string",
+          "description": "The maximum amount of time to wait for the service to start."
+        },
+        "stop-timeout": {
+          "type": "string",
+          "description": "The maximum amount of time to wait for the service to stop."
+        },
+        "watchdog-timeout": {
+          "type": "string",
+          "description": "The maximum amount of time the service can run without sending a\nheartbeat to the watchdog."
+        },
+        "reload-command": {
+          "type": "string",
+          "description": "The command to run to restart the service."
+        },
+        "restart-delay": {
+          "type": "string",
+          "description": "The time to wait between service restarts."
+        },
+        "timer": {
+          "type": "string",
+          "description": "The time or schedule to run a service."
+        },
+        "after": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The ordered list of apps that the service runs after it launches."
+        },
+        "before": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The ordered list of apps that the service runs before it launches."
+        },
+        "refresh-mode": {
+          "type": "string",
+          "enum": [
+            "endure",
+            "ignore-running",
+            "restart"
+          ],
+          "description": "Determines how the service should restart when the snap refreshes."
+        },
+        "stop-mode": {
+          "type": "string",
+          "enum": [
+            "sigterm",
+            "sigterm-all",
+            "sighup",
+            "sighup-all",
+            "sigusr1",
+            "sigusr1-all",
+            "sigusr2",
+            "sigusr2-all",
+            "sigint",
+            "sigint-all"
+          ],
+          "description": "The signal to send when stopping the service."
+        },
+        "restart-condition": {
+          "type": "string",
+          "enum": [
+            "on-success",
+            "on-failure",
+            "on-abnormal",
+            "on-abort",
+            "on-watchdog",
+            "always",
+            "never"
+          ],
+          "description": "The conditions that cause the service to restart."
+        },
+        "success-exit-status": {
+          "type": "array",
+          "description": "The list of additional successful exit statuses that the service can return."
+        },
+        "install-mode": {
+          "type": "string",
+          "enum": [
+            "disable",
+            "enable"
+          ],
+          "description": "Whether snapd can automatically start the service when the snap is installed."
+        },
+        "daemon-scope": {
+          "type": "string",
+          "enum": [
+            "system",
+            "user"
+          ],
+          "description": "Determines whether the service is run on a system or a user instance of\nsystemd."
+        },
+        "activates-on": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The slots exposed by the snap to activate the service with D-Bus."
         }
       },
       "additionalProperties": false
@@ -2234,9 +2248,10 @@
             "go",
             "go-use",
             "gradle",
+            "initrd",
             "jlink",
+            "kernel",
             "make",
-            "matter-sdk",
             "maven",
             "maven-use",
             "meson",
@@ -2365,7 +2380,7 @@
           "additionalProperties": {
             "type": "string"
           },
-          "description": "A map of files from the build directory to their destinations in the stage\ndirectory."
+          "description": "A map of files from the part’s install directory to their destinations in the\nstage directory."
         },
         "stage": {
           "type": "array",

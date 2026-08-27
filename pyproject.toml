@@ -1,6 +1,6 @@
 [project]
 name = "snapcraft-intellisense"
-version = "1.0.12"
+version = "1.0.13"
 requires-python = ">=3.13"
 
 [tool.ruff]
