@@ -1,8 +1,8 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.13"
 
 [[package]]
 name = "snapcraft-intellisense"
-version = "1.0.13"
+version = "1.0.14"
 source = { virtual = "." }

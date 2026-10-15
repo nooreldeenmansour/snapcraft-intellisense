@@ -1124,6 +1124,15 @@
           "type": "string",
           "description": "The desktop file used to start an app when the desktop environment starts."
         },
+        "refresh-mode": {
+          "type": "string",
+          "enum": [
+            "endure",
+            "ignore-running",
+            "restart"
+          ],
+          "description": "For an app, determines whether the snap can refresh when the app is still\nrunning. for a service, determines whether the service should restart when\nthe snap refreshes."
+        },
         "common-id": {
           "type": "string",
           "description": "The identifier to a desktop ID within an external appstream file."
@@ -2154,15 +2163,6 @@
             "type": "string"
           },
           "description": "The ordered list of apps that the service runs before it launches."
-        },
-        "refresh-mode": {
-          "type": "string",
-          "enum": [
-            "endure",
-            "ignore-running",
-            "restart"
-          ],
-          "description": "Determines how the service should restart when the snap refreshes."
         },
         "stop-mode": {
           "type": "string",
