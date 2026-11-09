@@ -316,6 +316,7 @@
                   "hardware-observe",
                   "hardware-random-control",
                   "hardware-random-observe",
+                  "hdmi-cec",
                   "hidraw",
                   "home",
                   "hostname-control",
@@ -606,6 +607,20 @@
         "$ref": "#/$defs/Part"
       }
     },
+    "hooks": {
+      "type": "object",
+      "description": "Lifecycle hooks",
+      "additionalProperties": {
+        "$ref": "#/$defs/Hook"
+      }
+    },
+    "components": {
+      "type": "object",
+      "description": "Snap components",
+      "additionalProperties": {
+        "$ref": "#/$defs/Component"
+      }
+    },
     "plugs": {
       "type": "object",
       "description": "Declares the snap's plugs. Property names are custom identifiers.\n\nAvailable interfaces: accel-interface, account-control, accounts-service, acrn, adb-support, allegro-vcu, alsa, appstream-metadata, audio-playback, audio-record, auditd-support, autopilot-introspection, avahi-control, avahi-observe, block-devices, bluetooth-control, bluez, bool-file, broadcom-asic-control, browser-support, calendar-services, camera, can-bus, checkbox-support, cifs-mount...",
@@ -693,6 +708,7 @@
                   "hardware-observe",
                   "hardware-random-control",
                   "hardware-random-observe",
+                  "hdmi-cec",
                   "hidraw",
                   "home",
                   "hostname-control",
@@ -874,6 +890,91 @@
   ],
   "additionalProperties": true,
   "$defs": {
+    "Socket": {
+      "type": "object",
+      "description": "Socket configuration for app activation",
+      "properties": {
+        "listen-stream": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "The socket’s abstract name or socket path."
+        },
+        "socket-mode": {
+          "type": "integer",
+          "description": "The mode or permissions of the socket in octal."
+        }
+      },
+      "additionalProperties": false
+    },
+    "Hook": {
+      "type": "object",
+      "description": "Hook configuration",
+      "properties": {
+        "command-chain": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The ordered list of commands to run before the hook runs."
+        },
+        "environment": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "description": "The environment variables for the hook."
+        },
+        "plugs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The list of interfaces that the hook can connect to."
+        },
+        "passthrough": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "The attributes to pass to the snap’s metadata file for the hook."
+        }
+      },
+      "additionalProperties": false
+    },
+    "Permissions": {
+      "type": "object",
+      "description": "File permission settings",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "The file path, relative to the prime directory, being assigned permissions."
+        },
+        "owner": {
+          "type": "integer",
+          "description": "The numeric user ID (UID) of the desired owner on the host system."
+        },
+        "group": {
+          "type": "integer",
+          "description": "The numeric group ID (GID) of the desired owner group on the host system."
+        },
+        "mode": {
+          "type": "string",
+          "description": "The numeric representation of the file’s read, write, and execute permissions."
+        }
+      },
+      "additionalProperties": false
+    },
     "Platform": {
       "type": "object",
       "description": "Platform/architecture configuration",
@@ -940,6 +1041,75 @@
             }
           ],
           "description": "The target architecture for the build."
+        }
+      },
+      "additionalProperties": false
+    },
+    "ContentPlug": {
+      "type": "object",
+      "description": "Content interface plug definition",
+      "properties": {
+        "content": {
+          "type": "string",
+          "description": "The name for the content type."
+        },
+        "interface": {
+          "type": "string",
+          "description": "The name of the interface."
+        },
+        "target": {
+          "type": "string",
+          "description": "The path to where the producer’s files will be available in the snap."
+        },
+        "default-provider": {
+          "type": "string",
+          "description": "The name of the producer snap."
+        }
+      },
+      "additionalProperties": true
+    },
+    "Component": {
+      "type": "object",
+      "description": "Snap component definition",
+      "properties": {
+        "summary": {
+          "type": "string",
+          "description": "The summary of the component."
+        },
+        "description": {
+          "type": "string",
+          "description": "The multi-line description of the component."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "kernel-modules",
+            "standard"
+          ],
+          "description": "The type of the component."
+        },
+        "version": {
+          "type": "string",
+          "description": "The version of the component."
+        },
+        "hooks": {
+          "type": "object",
+          "description": "Component lifecycle hooks",
+          "additionalProperties": {
+            "$ref": "#/$defs/Hook"
+          }
+        },
+        "adopt-info": {
+          "type": "string",
+          "description": "Selects a part to inherit metadata from and reuse for the component’s metadata."
+        },
+        "compression": {
+          "type": "string",
+          "enum": [
+            "lzo",
+            "xz"
+          ],
+          "description": "Specifies the algorithm that compresses this component."
         }
       },
       "additionalProperties": false
@@ -1059,6 +1229,7 @@
                   "hardware-observe",
                   "hardware-random-control",
                   "hardware-random-observe",
+                  "hdmi-cec",
                   "hidraw",
                   "home",
                   "hostname-control",
@@ -1279,6 +1450,7 @@
                     "hardware-observe",
                     "hardware-random-control",
                     "hardware-random-observe",
+                    "hdmi-cec",
                     "hidraw",
                     "home",
                     "hostname-control",
@@ -1506,6 +1678,7 @@
                   "hardware-observe",
                   "hardware-random-control",
                   "hardware-random-observe",
+                  "hdmi-cec",
                   "hidraw",
                   "home",
                   "hostname-control",
@@ -1726,6 +1899,7 @@
                     "hardware-observe",
                     "hardware-random-control",
                     "hardware-random-observe",
+                    "hdmi-cec",
                     "hidraw",
                     "home",
                     "hostname-control",
@@ -1945,8 +2119,10 @@
         },
         "sockets": {
           "type": "object",
-          "additionalProperties": true,
-          "description": "The sockets used to activate an app."
+          "description": "Socket activation configuration",
+          "additionalProperties": {
+            "$ref": "#/$defs/Socket"
+          }
         },
         "stop-command": {
           "type": "string",
@@ -2224,7 +2400,36 @@
           "items": {
             "type": "string"
           },
-          "description": "During the stage step, these packages are included in the stage environment\nalongside the build artifa"
+          "description": "During the stage step, these packages are included in the stage environment\nalongside the build artifacts."
+        },
+        "stage-snaps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "During the stage step, these snaps are included in the stage environment."
+        },
+        "override-stage": {
+          "type": "string",
+          "description": "The commands to run instead of the default behavior of the stage step."
+        },
+        "prime": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "During the prime step, any specified files are copied from the stage directory\nto the final payload."
+        },
+        "override-prime": {
+          "type": "string",
+          "description": "The commands to run instead of the default behavior of the prime step."
+        },
+        "permissions": {
+          "type": "array",
+          "description": "File permission settings",
+          "items": {
+            "$ref": "#/$defs/Permissions"
+          }
         }
       },
       "additionalProperties": true
